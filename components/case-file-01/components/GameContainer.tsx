@@ -7,10 +7,11 @@ import { Minimap } from './Minimap';
 import { QuestionModal } from './QuestionModal';
 import { StoryModal } from './StoryModal';
 import { ArrowUp, ArrowDown, CornerUpLeft, CornerUpRight } from 'lucide-react';
+import '../styles.css';
 
 export default function GameContainer() {
-  const {
-    player, anomalies, activeAnomaly, solveAnomaly, closeAnomaly,
+  const { 
+    player, anomalies, activeAnomaly, solveAnomaly, closeAnomaly, 
     gameWon, allSolved, movePlayer, turnPlayer, levelIndex, currentMap,
     showStory, finishStory
   } = useGameEngine();
