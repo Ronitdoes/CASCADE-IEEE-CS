@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import gsap from 'gsap'
 import styles from '../operation-deadlight.module.css'
 
@@ -13,25 +13,22 @@ const BINARY_GRID = [
   [0, 1, 0, 1, 1], // sum = 3 (odd)
 ]
 
-// Morse code puzzle - decodes to SHIELD
-const MORSE_CODE = '... .... .. . .-.. -..'
-const MORSE_ANSWER = 'SHIELD'
+const PACKET_HEX = '45 00 00 2e 04 d2 00 00 40 11 ab cd 0a 00 00 01 0a 00 00 02 53 48 49 45 4c 44'
+const PACKET_ANSWER = 'SHIELD'
 
-// Cipher puzzle - Vigenère with key SHIELD (Plaintext = (Ciphertext + Key) % 26)
-// REPLACE decrypted to YXHHOZM with key SHIELD
-const CIPHER_TEXT = 'YXHHOZM'
+const CIPHER_TEXT = 'ZXHHPZM'
 const CIPHER_ANSWER = 'REPLACE'
 
 interface FragmentState {
   binary: boolean
-  morse: boolean
+  packet: boolean
   image: boolean
   cipher: boolean
 }
 
 export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
   const [fragments, setFragments] = useState<FragmentState>({
-    binary: false, morse: false, image: false, cipher: false,
+    binary: false, packet: false, image: false, cipher: false,
   })
   const [activePuzzle, setActivePuzzle] = useState<keyof FragmentState | null>(null)
   const [assembling, setAssembling] = useState(false)
@@ -79,9 +76,9 @@ export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
             <path d="M50 5 L95 50 L50 50 Z" fill={fragments.binary ? '#b8862a' : '#1a1510'} stroke="#3a3020" strokeWidth="2" />
           </svg>
         </div>
-        <div className={`${styles.symbolPiece} ${styles.symbolTR} ${fragments.morse ? styles.symbolRevealed : ''}`}>
+        <div className={`${styles.symbolPiece} ${styles.symbolTR} ${fragments.packet ? styles.symbolRevealed : ''}`}>
           <svg viewBox="0 0 100 100" width="100" height="100">
-            <path d="M50 5 L50 50 L5 50 Z" fill={fragments.morse ? '#b8862a' : '#1a1510'} stroke="#3a3020" strokeWidth="2" />
+            <path d="M50 5 L50 50 L5 50 Z" fill={fragments.packet ? '#b8862a' : '#1a1510'} stroke="#3a3020" strokeWidth="2" />
           </svg>
         </div>
         <div className={`${styles.symbolPiece} ${styles.symbolBL} ${fragments.image ? styles.symbolRevealed : ''}`}>
@@ -114,13 +111,13 @@ export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
             {fragments.binary && <span className={styles.solvedBadge}>✓</span>}
           </button>
           <button
-            className={`${styles.miniPuzzleBtn} ${fragments.morse ? styles.miniPuzzleSolved : ''}`}
-            onClick={() => !fragments.morse && setActivePuzzle('morse')}
-            disabled={fragments.morse}
+            className={`${styles.miniPuzzleBtn} ${fragments.packet ? styles.miniPuzzleSolved : ''}`}
+            onClick={() => !fragments.packet && setActivePuzzle('packet')}
+            disabled={fragments.packet}
           >
-            <span className={styles.miniPuzzleIcon}>·—</span>
-            <span>MORSE SIGNAL</span>
-            {fragments.morse && <span className={styles.solvedBadge}>✓</span>}
+            <span className={styles.miniPuzzleIcon}>[IP]</span>
+            <span>PACKET DECODER</span>
+            {fragments.packet && <span className={styles.solvedBadge}>✓</span>}
           </button>
           <button
             className={`${styles.miniPuzzleBtn} ${fragments.image ? styles.miniPuzzleSolved : ''}`}
@@ -147,14 +144,14 @@ export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
       {activePuzzle === 'binary' && (
         <BinaryPuzzle onSolved={() => solveFragment('binary')} onBack={() => setActivePuzzle(null)} />
       )}
-      {activePuzzle === 'morse' && (
-        <MorsePuzzle onSolved={() => solveFragment('morse')} onBack={() => setActivePuzzle(null)} />
+      {activePuzzle === 'packet' && (
+        <PacketPuzzle onSolved={() => solveFragment('packet')} onBack={() => setActivePuzzle(null)} />
       )}
       {activePuzzle === 'image' && (
         <ImageDecodePuzzle onSolved={() => solveFragment('image')} onBack={() => setActivePuzzle(null)} />
       )}
       {activePuzzle === 'cipher' && (
-        <CipherPuzzle onSolved={() => solveFragment('cipher')} onBack={() => setActivePuzzle(null)} morseSolved={fragments.morse} />
+        <CipherPuzzle onSolved={() => solveFragment('cipher')} onBack={() => setActivePuzzle(null)} packetSolved={fragments.packet} />
       )}
 
       {/* Assembly / completion */}
@@ -249,14 +246,26 @@ function BinaryPuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =
   )
 }
 
-/* ═══════════════ MORSE PUZZLE ═══════════════ */
-function MorsePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () => void }) {
+/* ═══════════════ PACKET DECODER PUZZLE ═══════════════ */
+function PacketPuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () => void }) {
   const [input, setInput] = useState('')
   const [wrong, setWrong] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const startTimeRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    startTimeRef.current = Date.now()
+    const timer = setInterval(() => {
+      if (startTimeRef.current !== null) {
+        setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000))
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (input.trim().toUpperCase() === MORSE_ANSWER) {
+    if (input.trim().toUpperCase() === PACKET_ANSWER) {
       onSolved()
     } else {
       setWrong(true)
@@ -268,20 +277,64 @@ function MorsePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =>
     <div className={`${styles.miniPuzzlePanel} ${wrong ? styles.miniPuzzleWrong : ''}`}>
       <div className={styles.miniPuzzleHeader}>
         <button onClick={onBack} className={styles.backBtn}>← BACK</button>
-        <h4>MORSE DECRYPTION</h4>
+        <h4>NETWORK PACKET DECODER</h4>
       </div>
       <p className={styles.miniPuzzleDesc}>
-        <strong>AUDIO LOG TRANSCRIPT:</strong> &quot;We picked up a low-frequency hum on the comms array. It isn't random noise—it's standard Morse code repeating every 11 seconds. The decoded plaintext holds the passcode key for the Vigenère communication log decryptor.&quot;
+        <strong>COMMUNICATIONS INTERCEPT:</strong> &quot;The main terminal intercepted a raw binary frame from the containment sector. Use the protocol frame architecture to decode the payload bytes into ASCII characters to extract the decryption key.&quot;
       </p>
-      <div className={styles.morseDisplay} style={{ padding: '1rem', background: '#020202', letterSpacing: '0.15em', fontSize: '1rem', marginBottom: '1rem' }}>
-        <code>{MORSE_CODE}</code>
+
+      {/* Frame Table */}
+      <div style={{ background: '#0a0a08', border: '1px solid #3a3020', padding: '0.8rem', fontSize: '0.65rem', color: '#8a8070', marginBottom: '1rem', lineHeight: '1.5', textAlign: 'left' }}>
+        <strong>IP Header Structure Reference Table:</strong>
+        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.4rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #3a3020' }}>
+              <th style={{ textAlign: 'left', padding: '0.2rem' }}>Byte Offset</th>
+              <th style={{ textAlign: 'left', padding: '0.2rem' }}>Field Name</th>
+              <th style={{ textAlign: 'left', padding: '0.2rem' }}>Format</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ padding: '0.2rem' }}>1</td>
+              <td style={{ padding: '0.2rem' }}>Version & IHL</td>
+              <td style={{ padding: '0.2rem' }}>Hex (e.g. 45 = IPv4, 20 bytes)</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '0.2rem' }}>3-4</td>
+              <td style={{ padding: '0.2rem' }}>Total Length</td>
+              <td style={{ padding: '0.2rem' }}>16-bit Integer (Octets)</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '0.2rem' }}>10</td>
+              <td style={{ padding: '0.2rem' }}>Protocol ID</td>
+              <td style={{ padding: '0.2rem' }}>8-bit Hex (e.g., 11 = UDP, 06 = TCP)</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '0.2rem' }}>13-16</td>
+              <td style={{ padding: '0.2rem' }}>Source IP Address</td>
+              <td style={{ padding: '0.2rem' }}>32-bit Address (4 octets)</td>
+            </tr>
+            <tr>
+              <td style={{ padding: '0.2rem' }}>21+</td>
+              <td style={{ padding: '0.2rem' }}>Payload Data</td>
+              <td style={{ padding: '0.2rem' }}>Hex representation of ASCII string</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
-      <form onSubmit={handleSubmit} className={styles.cipherForm}>
+
+      <div className={styles.morseDisplay} style={{ padding: '1rem', background: '#020202', letterSpacing: '0.1em', fontSize: '0.85rem', marginBottom: '1rem', fontFamily: 'var(--font-mono, monospace)', border: '1px dashed #3a3020' }}>
+        <strong>RAW FRAME HEX DUMP:</strong><br />
+        <span style={{ color: '#e8c060', fontSize: '0.9rem', display: 'block', marginTop: '0.5rem' }}>{PACKET_HEX}</span>
+      </div>
+
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '1rem' }}>
         <input
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Enter decoded key..."
+          placeholder="Enter payload string (ASCII)..."
           autoComplete="off"
           spellCheck={false}
           style={{
@@ -289,11 +342,10 @@ function MorsePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =>
             background: '#050505',
             border: '1px solid #3a3020',
             color: '#e8c060',
-            padding: '0.6rem',
+            padding: '0.7rem',
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: '0.8rem',
             boxSizing: 'border-box',
-            marginBottom: '0.8rem',
             outline: 'none',
           }}
         />
@@ -304,14 +356,14 @@ function MorsePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =>
             background: 'var(--accent-gold)',
             border: 'none',
             color: '#1a1205',
-            padding: '0.6rem',
+            padding: '0.7rem',
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: '0.75rem',
             fontWeight: 'bold',
             cursor: 'pointer',
           }}
         >
-          SUBMIT KEY
+          DECODE PAYLOAD
         </button>
       </form>
     </div>
@@ -411,13 +463,13 @@ function ImageDecodePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack:
 }
 
 /* ═══════════════ CIPHER PUZZLE ═══════════════ */
-function CipherPuzzle({ onSolved, onBack, morseSolved }: { onSolved: () => void; onBack: () => void; morseSolved: boolean }) {
+function CipherPuzzle({ onSolved, onBack, packetSolved }: { onSolved: () => void; onBack: () => void; packetSolved: boolean }) {
   const [input, setInput] = useState('')
   const [wrong, setWrong] = useState(false)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!morseSolved) return
+    if (!packetSolved) return
     if (input.trim().toUpperCase() === CIPHER_ANSWER) {
       onSolved()
     } else {
@@ -433,10 +485,7 @@ function CipherPuzzle({ onSolved, onBack, morseSolved }: { onSolved: () => void;
         <h4>VIGENERE DECRYPTION</h4>
       </div>
       <p className={styles.miniPuzzleDesc}>
-        <strong>SECURE INTELLIGENCE MEMO (REDACTED):</strong> &quot;The final autopsy and medical classification files were encrypted using a Vigenère cipher. Decrypt the ciphertext to reveal the true nature of the parasitic organism.&quot;
-      </p>
-      <p className={styles.miniPuzzleDesc} style={{ fontSize: '0.8rem', margin: '0.6rem 0 1.2rem 0', display: 'block' }}>
-        Key derived from the Morse signal segment.
+        <strong>SECURE INTELLIGENCE MEMO (REDACTED):</strong> &quot;The final autopsy and medical classification files were encrypted using a Vigenère cipher. Decrypt the ciphertext <code>{CIPHER_TEXT}</code> using the key derived from the packet analyzer (Switch 2) on the decryption tool at <a href="https://cs-crypt.vercel.app/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">cs-crypt.vercel.app</a> to reveal the true nature of the parasitic organism.&quot;
       </p>
       <div className={styles.cipherDisplay} style={{ marginBottom: '1rem' }}>
         <div className={styles.cipherRow} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
@@ -445,18 +494,18 @@ function CipherPuzzle({ onSolved, onBack, morseSolved }: { onSolved: () => void;
         </div>
         <div className={styles.cipherRow} style={{ display: 'flex', justifyContent: 'space-between' }}>
           <span className={styles.cipherLabel} style={{ color: '#8a8070' }}>DECRYPTION KEY:</span>
-          <code style={{ fontSize: '1rem', color: morseSolved ? '#4aff4a' : '#ff4444', fontWeight: 'bold', letterSpacing: '0.05em' }}>
-            {morseSolved ? 'SHIELD' : 'LOCKED (DECRYPT MORSE)'}
+          <code style={{ fontSize: '1rem', color: packetSolved ? '#4aff4a' : '#ff4444', fontWeight: 'bold', letterSpacing: '0.05em' }}>
+            {packetSolved ? 'SHIELD' : 'LOCKED (DECRYPT PACKET)'}
           </code>
         </div>
       </div>
-      <form onSubmit={handleSubmit} className={styles.cipherForm}>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem', marginTop: '1rem' }}>
         <input
           type="text"
           value={input}
-          disabled={!morseSolved}
+          disabled={!packetSolved}
           onChange={e => setInput(e.target.value)}
-          placeholder={morseSolved ? "Decoded word..." : "Locked: Decode Morse Signal first"}
+          placeholder={packetSolved ? "Decoded word..." : "Locked: Decode Network Packet first"}
           autoComplete="off"
           spellCheck={false}
           maxLength={10}
@@ -464,29 +513,28 @@ function CipherPuzzle({ onSolved, onBack, morseSolved }: { onSolved: () => void;
             width: '100%',
             background: '#050505',
             border: '1px solid #3a3020',
-            color: morseSolved ? '#e8c060' : '#444',
-            padding: '0.6rem',
+            color: packetSolved ? '#e8c060' : '#444',
+            padding: '0.7rem',
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: '0.8rem',
             boxSizing: 'border-box',
-            marginBottom: '0.8rem',
             outline: 'none',
-            cursor: morseSolved ? 'text' : 'not-allowed'
+            cursor: packetSolved ? 'text' : 'not-allowed'
           }}
         />
         <button
           type="submit"
-          disabled={!morseSolved}
+          disabled={!packetSolved}
           style={{
             width: '100%',
-            background: morseSolved ? 'var(--accent-gold)' : '#1a1a1a',
+            background: packetSolved ? 'var(--accent-gold)' : '#1a1a1a',
             border: 'none',
-            color: morseSolved ? '#1a1205' : '#555',
-            padding: '0.6rem',
+            color: packetSolved ? '#1a1205' : '#555',
+            padding: '0.7rem',
             fontFamily: 'var(--font-mono, monospace)',
             fontSize: '0.75rem',
             fontWeight: 'bold',
-            cursor: morseSolved ? 'pointer' : 'not-allowed',
+            cursor: packetSolved ? 'pointer' : 'not-allowed',
           }}
         >
           DECODE SIGNATURE
@@ -495,4 +543,5 @@ function CipherPuzzle({ onSolved, onBack, morseSolved }: { onSolved: () => void;
     </div>
   )
 }
+
 

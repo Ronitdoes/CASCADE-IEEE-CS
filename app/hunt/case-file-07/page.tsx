@@ -70,7 +70,7 @@ export default function OperationDeadlightPage() {
     }
   }, [hydrated])
 
-  const devUnlockAll = true // Set to true to unlock all acts for testing
+  const devUnlockAll = false // Set to true to unlock all acts for testing
 
   const actProgress =
     isComplete('act-8') ? 8 :
