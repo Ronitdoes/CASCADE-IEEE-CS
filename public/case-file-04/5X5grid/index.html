@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Broken Ticket</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              red: {
+                650: "#dc2626",
+              },
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #0a0a0a;
+      }
+
+      .font-mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+    </style>
+  </head>
+
+  <body
+    class="min-h-screen text-[#F5F5F5] flex flex-col justify-start selection:bg-red-950 selection:text-red-200 relative overflow-hidden"
+  >
+    <!-- Background Glow -->
+    <div
+      class="absolute top-0 left-0 w-full h-[500px] bg-[radial-gradient(circle_at_top,rgba(220,38,38,0.06)_0%,transparent_60%)] pointer-events-none z-0"
+    ></div>
+
+    <!-- NAVBAR -->
+    <nav
+      class="h-16 border-b border-white/5 flex items-center justify-between px-6 z-20 w-full bg-zinc-950/80 backdrop-blur-sm relative"
+    >
+      <div class="text-xs tracking-[0.25em] uppercase font-bold text-red-500">
+        BROKEN TICKET
+      </div>
+
+      <!-- TIMER -->
+      <div id="nav-timer-container" class="hidden flex items-center gap-2">
+        <span
+          class="text-[10px] font-mono opacity-40 uppercase tracking-widest hidden sm:inline"
+        >
+          CYCLE DURATION:
+        </span>
+
+        <div
+          id="timer-text"
+          class="text-xs font-mono font-bold bg-red-950/45 px-3 py-1.5 border border-red-900/30 text-red-400 rounded-sm"
+        >
+          ⏰ 00:00
+        </div>
+      </div>
+    </nav>
+
+    <!-- MAIN CONTAINER -->
+    <main
+      class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 z-10 relative"
+    >
+      <div class="w-full max-w-4xl flex flex-col items-center">
+        <!-- STAGE 1: PUZZLE -->
+        <div id="screen-puzzle" class="w-full flex flex-col items-center">
+          <div class="text-center mb-4">
+            <h1 class="text-xl font-bold uppercase tracking-wide text-white">
+              Assemble Scrambled Fragments
+            </h1>
+
+            <p
+              class="text-[10px] text-white/40 font-mono uppercase tracking-widest"
+            >
+              No margins, no guide frames — align fibers to assemble the passkey
+            </p>
+          </div>
+
+          <div
+            id="puzzle-board-container"
+            class="w-full flex justify-center"
+          ></div>
+        </div>
+
+        <!-- STAGE 2: SCANNING -->
+        <div
+          id="screen-scanning"
+          class="hidden w-full max-w-md bg-zinc-950 border border-white/10 p-6 sm:p-8 rounded shadow-2xl flex flex-col items-center text-center"
+        >
+          <span
+            class="text-[10px] font-mono text-red-500 uppercase tracking-widest mb-4 font-bold"
+          >
+            // FRAGMENTS REASSEMBLED INSTANTLY
+          </span>
+
+          <!-- SCANNED TICKET -->
+          <div
+            class="relative border border-white/5 rounded overflow-hidden p-2 bg-white flex items-center justify-center max-w-[260px] aspect-square w-full mb-6"
+          >
+            <div
+              id="scanned-ticket-container"
+              class="w-full h-full flex items-center justify-center"
+            ></div>
+
+            <!-- Laser line -->
+            <div
+              class="absolute inset-x-0 h-0.5 bg-red-600/30 top-1/3 animate-pulse pointer-events-none"
+            ></div>
+          </div>
+
+          <!-- Answer Input -->
+          <div class="w-full space-y-4">
+            <input
+              type="text"
+              id="word-input"
+              class="w-full bg-zinc-900 border border-white/10 rounded px-3 py-2.5 text-center text-sm font-mono uppercase tracking-widest focus:outline-none focus:border-red-500 placeholder:opacity-20 text-white"
+              placeholder="ENTER SCANNED ANSWER"
+            />
+
+            <!-- Error -->
+            <div
+              id="scanning-error-hint"
+              class="hidden flex items-center gap-2 text-rose-400 bg-red-950/35 border border-red-900/50 p-2.5 rounded text-[10px] font-mono text-left"
+            >
+              <svg
+                class="w-3.5 h-3.5 shrink-0"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" x2="12" y1="8" y2="12" />
+                <line x1="12" x2="12.01" y1="16" y2="16" />
+              </svg>
+
+              <span>The security sequence rejected your verification key.</span>
+            </div>
+
+            <!-- Submit -->
+            <button
+              id="btn-verify"
+              class="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-mono text-xs uppercase tracking-widest rounded cursor-pointer font-bold transition-all"
+            >
+              SUBMIT ANSWER
+            </button>
+          </div>
+        </div>
+
+        <!-- STAGE 3: VICTORY -->
+        <div
+          id="screen-victory"
+          class="hidden w-full max-w-lg bg-zinc-950 border border-white/10 p-6 sm:p-8 rounded shadow-2xl flex flex-col items-center"
+        >
+          <!-- Trophy -->
+          <div
+            class="w-12 h-12 bg-red-950/20 border border-red-900 rounded-full flex items-center justify-center mb-4 text-red-500"
+          >
+            🏆
+          </div>
+
+          <h2
+            class="text-2xl font-black text-white uppercase tracking-tight text-center"
+          >
+            Trial Completed
+          </h2>
+
+          <p
+            class="text-xs text-white/40 font-mono uppercase tracking-widest text-center mt-1"
+          >
+            Chronos Gate sequence unlocked!
+          </p>
+
+          <!-- Completion Badge -->
+          <div
+            id="victory-team-badge"
+            class="bg-zinc-900/60 border border-white/5 rounded px-4 py-3 w-full my-6 text-center text-sm font-mono leading-relaxed"
+          >
+            ✅ Sequence completed in
+            <span class="text-red-500 font-bold">00:00</span>
+          </div>
+
+          <!-- Restart -->
+          <button
+            id="btn-restart"
+            class="mt-6 flex items-center gap-2 text-xs font-mono text-white/40 hover:text-white uppercase tracking-wider cursor-pointer"
+          >
+            Restart New Run
+          </button>
+        </div>
+      </div>
+    </main>
+
+    <!-- SCRIPT -->
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
