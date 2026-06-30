@@ -1,1643 +1,1473 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Lock, Unlock, Terminal as TerminalIcon, ChevronRight, AlertTriangle, RotateCcw, Search, HelpCircle, Check, Clock, Skull } from "lucide-react";
-
-interface DialogueCutsceneProps {
-  sceneKey: keyof typeof SCENES;
-  onComplete: () => void;
-}
-
-interface HintPanelProps {
-  hints: string[];
-  usedCount: number;
-  onUseHint: (idx: number) => void;
-  penaltyTotal: number;
-}
-
-interface PuzzleFrameProps {
-  index: number;
-  title: string;
-  prompt: string;
-  status: { ok: boolean; msg: string } | null;
-  hints: string[];
-  hintUsed: number;
-  onUseHint: (idx: number) => void;
-  penaltyTotal: number;
-  children: React.ReactNode;
-}
-
-interface PuzzleProps {
-  fragments?: Record<string, string>;
-  onSolve: (key: string, value: string) => void;
-  hintUsed: number;
-  onUseHint: (idx: number) => void;
-  penaltyTotal: number;
-}
-
-interface Puzzle9Props extends PuzzleProps {
-  fragments: Record<string, string>;
-}
-
-interface HeaderProps {
-  fragments: Record<string, string>;
-  solvedCount: number;
-  elapsed: number;
-  penalty: number;
-  onRestart: () => void;
-  muted: boolean;
-  onToggleMute: () => void;
-}
-
-interface SplashScreenProps {
-  onStart: () => void;
-}
-
-interface AnswerKeyProps {
-  elapsed: number;
-  penalty: number;
-  onRestart: () => void;
-}
-
-type SequenceStep =
-  | { type: "cutscene"; key: string; idx?: never }
-  | { type: "puzzle"; idx: number; key?: never };
-
-/* ============================================================
-   THE BROKEN DECK — HARD MODE
-   • Timer starts when first puzzle begins
-   • Each hint = +60s penalty (max 3 per puzzle)
-   • All hints cost. No freebies.
-   ============================================================ */
-
-const CHARS = {
-  ARCHIVIST: { name:"Archivist", avatar:"🗂", color:"#6dfb9b", desc:"Keeper of the classified archive" },
-  DIRECTOR:  { name:"Director Voss", avatar:"👁", color:"#ffb238", desc:"Former head of the facility" },
-  SYSTEM:    { name:"SYSTEM", avatar:"⬛", color:"#a0b8a8", desc:"Terminal" },
-  USER:      { name:"You", avatar:"🔍", color:"#c8e8ff", desc:"The investigator" },
-};
-
-/* ── DIALOGUE SCENES (unchanged) ── */
-const SCENES = {
-  intro: [
-    { char:"SYSTEM",    text:"ARCHIVE ACCESS INITIALISED — 03:17:44", pause:1800 },
-    { char:"SYSTEM",    text:"Loading case file... BROKEN DECK... classified depth: LEVEL IX.", pause:2200 },
-    { char:"ARCHIVIST", text:"You're in. Good. I wasn't sure the old terminal would accept the access token.", pause:2800 },
-    { char:"USER",      text:"What is this place?", pause:2000 },
-    { char:"ARCHIVIST", text:"A research facility. Operated under a classified government contract. Shut down in 1972 without any official explanation.", pause:3200 },
-    { char:"ARCHIVIST", text:"Official records say it was a behavioural research laboratory. The documents that survived say something else entirely.", pause:3400 },
-    { char:"USER",      text:"What did they actually do here?", pause:2200 },
-    { char:"ARCHIVIST", text:"Months after the closure, investigators found a sealed chamber beneath the main complex. Inside — four cabinets. No names. No instructions.", pause:3600 },
-    { char:"ARCHIVIST", text:"Only a symbol on each door. Spades, hearts, diamonds, clubs.", pause:2600 },
-    { char:"USER",      text:"What happened to the people who went in?", pause:2200 },
-    { char:"ARCHIVIST", text:"Every person who entered reported something different. A library. A city. A memory that didn't belong to them.", pause:3200 },
-    { char:"ARCHIVIST", text:"Every single one of them came back saying the exact same thing.", pause:2600 },
-    { char:"USER",      text:"What did they say?", pause:2000 },
-    { char:"ARCHIVIST", text:"That's sealed too. We need to unlock it first.", pause:2600 },
-    { char:"ARCHIVIST", text:"The whole investigation is filed under PROJECT NULL. Before the chamber opens, we need to confirm the date of the final experiment. Start there.", pause:3800 },
-  ],
-  afterDate: [
-    { char:"SYSTEM",    text:"DATE RECORD — VERIFIED.", pause:1800 },
-    { char:"USER",      text:"14 October 1972. Found it.", pause:2000 },
-    { char:"ARCHIVIST", text:"Good eye. The ink had faded on most copies. They were counting on that.", pause:2800 },
-    { char:"ARCHIVIST", text:"Cross-referencing the date against the facility's master index returns a discrepancy. Six reports are accounted for.", pause:3000 },
-    { char:"ARCHIVIST", text:"But every single one of those reports references a seventh. A file the index claims was never made.", pause:3400 },
-    { char:"USER",      text:"So someone pulled it.", pause:2000 },
-    { char:"ARCHIVIST", text:"Deliberately. Whatever's in that file — it's the one piece they didn't want found.", pause:3000 },
-  ],
-  afterReport: [
-    { char:"SYSTEM",    text:"REPORT_04 — RESTORED TO INDEX.", pause:1800 },
-    { char:"USER",      text:"Report 04. Every other file pointed straight to it.", pause:2400 },
-    { char:"ARCHIVIST", text:"And now we know why it was removed. Read what's inside.", pause:2600 },
-    { char:"USER",      text:"It describes a procedure. Not a study. They were sending people into those cabinets deliberately.", pause:3200 },
-    { char:"ARCHIVIST", text:"Each subject reported a different place. No two accounts matched.", pause:2800 },
-    { char:"ARCHIVIST", text:"The cabinets weren't showing different realities. They were showing different paths to the same destination.", pause:3400 },
-    { char:"ARCHIVIST", text:"Whatever sits at that destination — the archive calls it PROJECT NULL.", pause:3000 },
-  ],
-  afterNull: [
-    { char:"SYSTEM",    text:"CLEARANCE ACCEPTED — PROJECT NULL.", pause:2000 },
-    { char:"SYSTEM",    text:"WARNING: Second locking mechanism engaged.", pause:2200 },
-    { char:"USER",      text:"There's another lock.", pause:2000 },
-    { char:"ARCHIVIST", text:"This one doesn't ask for a name. It's asking for a rank.", pause:2400 },
-    { char:"ARCHIVIST", text:"Find the one that appears on the most sensitive documents. That's your rank.", pause:3000 },
-  ],
-  afterLevel: [
-    { char:"SYSTEM",    text:"AUTHORIZATION GRANTED — LEVEL IX.", pause:2000 },
-    { char:"USER",      text:"Level IX. It wasn't even in the official manual.", pause:2400 },
-    { char:"ARCHIVIST", text:"The deeper files are unlocking now. They describe something called the Convergence Test.", pause:3400 },
-    { char:"ARCHIVIST", text:"Subjects in separate cabinets began describing locations they had never visited. Independent participants produced identical drawings.", pause:3600 },
-    { char:"USER",      text:"That shouldn't be possible.", pause:2000 },
-    { char:"ARCHIVIST", text:"One report reads: 'The destination remains constant. Only the journey changes.'", pause:3000 },
-    { char:"ARCHIVIST", text:"That report was removed from the official record. But not from the building. Find it.", pause:3000 },
-  ],
-  afterRoom: [
-    { char:"SYSTEM",    text:"ROOM IDENTIFIED — OBSERVATION CHAMBER.", pause:2000 },
-    { char:"USER",      text:"The Observation Chamber. This is where they ran the tests.", pause:2400 },
-    { char:"ARCHIVIST", text:"Undisturbed since 1972. Notes still pinned to the wall. One of them doesn't belong here.", pause:2800 },
-    { char:"ARCHIVIST", text:"Search the archive index for each word. The one with no hits — that's your answer.", pause:3000 },
-  ],
-  afterNote: [
-    { char:"SYSTEM",    text:"ODD NOTE — DISCARDED.", pause:1800 },
-    { char:"USER",      text:"Banana. That was... not what I expected.", pause:2200 },
-    { char:"ARCHIVIST", text:"Someone planted it. A test, maybe. Or a joke.", pause:2400 },
-    { char:"ARCHIVIST", text:"Four witnesses were asked why they chose the cabinet they chose. Only one named the trait the psychology report was looking for.", pause:3800 },
-  ],
-  afterSuit: [
-    { char:"SYSTEM",    text:"CABINET IDENTIFIED — HEARTS.", pause:2000 },
-    { char:"USER",      text:"Hearts. The one witness who said 'emotion' directly.", pause:2400 },
-    { char:"ARCHIVIST", text:"The experiment log has a gap. Entry 3 is missing. Find it.", pause:2800 },
-  ],
-  afterEntry: [
-    { char:"SYSTEM",    text:"ENTRY 3 — RECOVERED.", pause:1800 },
-    { char:"USER",      text:"'The room went silent before anyone screamed.'", pause:2600 },
-    { char:"ARCHIVIST", text:"You have everything. A project name, a clearance level, a case number, a cabinet. Put them in sequence.", pause:3800 },
-  ],
-  final: [
-    { char:"SYSTEM",    text:"AUTHORIZATION ACCEPTED — NULL-IX-04-HEARTS.", pause:2200 },
-    { char:"SYSTEM",    text:"Loading final recovered transcript...", pause:2400 },
-    { char:"USER",      text:"'There was never a choice. Every cabinet was leading here.'", pause:3200 },
-    { char:"ARCHIVIST", text:"They knew from the beginning that all four paths converged.", pause:3200 },
-    { char:"USER",      text:"Then why build four cabinets at all?", pause:2400 },
-    { char:"ARCHIVIST", text:"Because the choice was never the point. The destination was.", pause:3000 },
-    { char:"SYSTEM",    text:"ARCHIVE CLOSED. Case file logged: BROKEN DECK.", pause:2800 },
-  ],
-};
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 /* ── MUSIC ENGINE ── */
 function useMusicEngine() {
-  const ctxRef = useRef<AudioContext | null>(null);
-  const nodesRef = useRef<any>({});
-  const startedRef = useRef(false);
-
-  function getCtx(): AudioContext {
-    if (!ctxRef.current) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      ctxRef.current = new AudioCtx();
-    }
-    return ctxRef.current;
+  const r = useRef({ ctx: null, master: null, nodes: [], timers: [] });
+  function getCtx() {
+    if (!r.current.ctx) r.current.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    return r.current.ctx;
   }
-
   function start() {
-    if (startedRef.current) return;
-    startedRef.current = true;
     const ctx = getCtx();
     if (ctx.state === "suspended") ctx.resume();
-
-    // Master gain
-    const master = ctx.createGain();
-    master.gain.value = 0.18;
-    master.connect(ctx.destination);
-    nodesRef.current.master = master;
-
-    // Reverb (convolver approximation via feedback delay)
-    const reverb = ctx.createDelay(2);
-    reverb.delayTime.value = 0.06;
-    const reverbGain = ctx.createGain();
-    reverbGain.gain.value = 0.35;
-    reverb.connect(reverbGain);
-    reverbGain.connect(reverb);
-    reverbGain.connect(master);
-    nodesRef.current.reverb = reverb;
-    nodesRef.current.reverbGain = reverbGain;
-
-    // Low drone — two detuned oscillators
-    function makeDrone(freq: number, detune: number, gainVal: number) {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      osc.detune.value = detune;
-      const g = ctx.createGain();
-      g.gain.value = gainVal;
-      osc.connect(g);
-      g.connect(reverb);
-      g.connect(master);
-      osc.start();
-      return { osc, g };
+    const master = ctx.createGain(); master.gain.value = 0.13; master.connect(ctx.destination);
+    r.current.master = master;
+    const rev = ctx.createDelay(2.2); rev.delayTime.value = 0.09;
+    const revG = ctx.createGain(); revG.gain.value = 0.28; rev.connect(revG); revG.connect(rev); revG.connect(master);
+    function drone(f, d, g) {
+      const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = f; o.detune.value = d;
+      const gn = ctx.createGain(); gn.gain.value = g; o.connect(gn); gn.connect(rev); gn.connect(master); o.start();
+      return o;
     }
-    nodesRef.current.drone1 = makeDrone(48, 0, 0.28);
-    nodesRef.current.drone2 = makeDrone(48, 7, 0.18);
-    nodesRef.current.drone3 = makeDrone(72, -5, 0.10);
+    const d1 = drone(48, 0, 0.22); const d2 = drone(48, 7, 0.12); const d3 = drone(96, -5, 0.06);
+    const lfo = ctx.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 0.055;
+    const lfoG = ctx.createGain(); lfoG.gain.value = 0.04;
+    const baseG = ctx.createGain(); baseG.gain.value = 0.22;
+    lfo.connect(lfoG); lfoG.connect(baseG.gain); d1.connect(baseG); baseG.connect(master); lfo.start();
+    r.current.nodes = [d1, d2, d3, lfo];
 
-    // Sub-bass pulse every ~3.2s
-    function subPulse() {
-      const t = ctx.currentTime;
-      const sub = ctx.createOscillator();
-      sub.type = "sine";
-      sub.frequency.setValueAtTime(36, t);
-      sub.frequency.exponentialRampToValueAtTime(28, t + 1.4);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.22, t + 0.08);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
-      sub.connect(g);
-      g.connect(master);
-      sub.start(t);
-      sub.stop(t + 1.8);
-      nodesRef.current._subTimer = setTimeout(subPulse, 3200 + Math.random() * 800);
+    // FIX: capture timers ref so push after stop() is safe
+    function schedulePulse() {
+      const tid = setTimeout(() => {
+        if (!r.current.ctx) return; // stopped
+        const t = ctx.currentTime;
+        const o = ctx.createOscillator(); o.type = "sine"; o.frequency.setValueAtTime(36, t); o.frequency.exponentialRampToValueAtTime(26, t + 1.6);
+        const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.18, t + 0.1); g.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+        o.connect(g); g.connect(master); o.start(t); o.stop(t + 2);
+        schedulePulse();
+      }, 2800 + Math.random() * 1200);
+      r.current.timers.push(tid);
     }
-    subPulse();
+    schedulePulse();
 
-    // Slow LFO on drone gain for breathing effect
-    const lfo = ctx.createOscillator();
-    lfo.type = "sine";
-    lfo.frequency.value = 0.07;
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.06;
-    lfo.connect(lfoGain);
-    lfoGain.connect(nodesRef.current.drone1.g.gain);
-    lfoGain.connect(nodesRef.current.drone2.g.gain);
-    lfo.start();
-    nodesRef.current.lfo = lfo;
-
-    // Atmospheric high shimmer — random soft sine pings
-    function shimmer() {
-      const freqs = [523, 622, 698, 784, 932, 1047];
-      const t = ctx.currentTime;
-      const f = freqs[Math.floor(Math.random() * freqs.length)];
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = f;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.055, t + 0.4);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 3.5);
-      osc.connect(g);
-      g.connect(reverb);
-      osc.start(t);
-      osc.stop(t + 4);
-      nodesRef.current._shimTimer = setTimeout(shimmer, 2800 + Math.random() * 4200);
+    const shimNotes = [523, 622, 698, 932, 1047, 784];
+    function scheduleShim() {
+      const tid = setTimeout(() => {
+        if (!r.current.ctx) return;
+        const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = "sine";
+        o.frequency.value = shimNotes[Math.floor(Math.random() * shimNotes.length)];
+        const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.042, t + 0.5); g.gain.exponentialRampToValueAtTime(0.001, t + 3.8);
+        o.connect(g); g.connect(rev); o.start(t); o.stop(t + 4.2);
+        scheduleShim();
+      }, 3000 + Math.random() * 5000);
+      r.current.timers.push(tid);
     }
-    shimmer();
+    setTimeout(scheduleShim, 1500);
 
-    // Eerie melodic motif — pentatonic minor, slow
-    const motifNotes = [98, 110, 131, 147, 175, 196, 220];
-    let motifIdx = 0;
-    function motif() {
-      const t = ctx.currentTime;
-      const freq = motifNotes[motifIdx % motifNotes.length];
-      motifIdx++;
-      const osc = ctx.createOscillator();
-      osc.type = "triangle";
-      osc.frequency.value = freq;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.09, t + 0.3);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 2.8);
-      osc.connect(g);
-      g.connect(reverb);
-      g.connect(master);
-      osc.start(t);
-      osc.stop(t + 3.2);
-      nodesRef.current._motifTimer = setTimeout(motif, 1800 + Math.random() * 2600);
+    const motNotes = [98, 110, 131, 147, 175, 196, 220]; let mi = 0;
+    function scheduleMotif() {
+      const tid = setTimeout(() => {
+        if (!r.current.ctx) return;
+        const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = "triangle";
+        o.frequency.value = motNotes[mi++ % motNotes.length];
+        const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.07, t + 0.35); g.gain.exponentialRampToValueAtTime(0.001, t + 3);
+        o.connect(g); g.connect(rev); g.connect(master); o.start(t); o.stop(t + 3.5);
+        scheduleMotif();
+      }, 1600 + Math.random() * 2800);
+      r.current.timers.push(tid);
     }
-    setTimeout(motif, 1200);
+    setTimeout(scheduleMotif, 800);
 
-    // Tension noise layer — filtered white noise
-    const bufferSize = ctx.sampleRate * 2;
-    const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1);
-    const noise = ctx.createBufferSource();
-    noise.buffer = noiseBuffer;
-    noise.loop = true;
-    const bpf = ctx.createBiquadFilter();
-    bpf.type = "bandpass";
-    bpf.frequency.value = 200;
-    bpf.Q.value = 0.4;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.value = 0.018;
-    noise.connect(bpf);
-    bpf.connect(noiseGain);
-    noiseGain.connect(master);
-    noise.start();
-    nodesRef.current.noise = noise;
-    nodesRef.current.noiseGain = noiseGain;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const ns = ctx.createBufferSource(); ns.buffer = buf; ns.loop = true;
+    const bpf = ctx.createBiquadFilter(); bpf.type = "bandpass"; bpf.frequency.value = 200; bpf.Q.value = 0.4;
+    const nsG = ctx.createGain(); nsG.gain.value = 0.012; ns.connect(bpf); bpf.connect(nsG); nsG.connect(master); ns.start();
+    r.current.nodes.push(ns);
   }
-
-  function setVolume(v: number) {
-    if (nodesRef.current.master) {
-      nodesRef.current.master.gain.setTargetAtTime(v, getCtx().currentTime, 0.3);
-    }
-  }
-
+  function setVol(v) { if (r.current.master) r.current.master.gain.setTargetAtTime(v, getCtx().currentTime, 0.4); }
   function stop() {
-    clearTimeout(nodesRef.current._subTimer);
-    clearTimeout(nodesRef.current._shimTimer);
-    clearTimeout(nodesRef.current._motifTimer);
-    try { nodesRef.current.noise?.stop(); } catch(e) {}
-    try { nodesRef.current.lfo?.stop(); } catch(e) {}
-    ["drone1","drone2","drone3"].forEach(k => {
-      try { nodesRef.current[k]?.osc.stop(); } catch(e) {}
-    });
-    try { ctxRef.current?.close(); } catch(e) {}
-    ctxRef.current = null;
-    nodesRef.current = {};
-    startedRef.current = false;
+    r.current.timers.forEach(clearTimeout); r.current.timers = [];
+    r.current.nodes.forEach(n => { try { n.stop(); } catch(e){} });
+    r.current.nodes = [];
+    try { r.current.ctx?.close(); } catch(e){}
+    r.current.ctx = null; r.current.master = null;
   }
-
-  return { start, stop, setVolume };
+  return { start, stop, setVol };
 }
 
-/* ── TIMER UTILITIES ── */
-function formatTime(secs: number) {
-  const h = Math.floor(secs / 3600);
-  const m = Math.floor((secs % 3600) / 60);
-  const s = secs % 60;
-  if (h > 0) return `${h}h ${String(m).padStart(2,"0")}m ${String(s).padStart(2,"0")}s`;
-  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+/* ── PALETTE / STYLES ── */
+const S = `
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;600&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --void:#060e09;--panel:#0b1410;--paper:#e9e3d0;--ink:#1c1810;--pe:#b8b09a;
+  --g:#6dfb9b;--gd:#2a5e3f;--am:#ffb238;--re:#ff4040;--ub:#c8e8ff;
+  --ln:rgba(109,251,155,0.11);--lns:rgba(109,251,155,0.22);
 }
+body{background:var(--void)}
+.root{min-height:100vh;background:var(--void);color:var(--g);font-family:'IBM Plex Mono',monospace;overflow-x:hidden;position:relative}
+.root::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:30;background:repeating-linear-gradient(to bottom,rgba(109,251,155,.018) 0,rgba(109,251,155,.018) 1px,transparent 2px,transparent 4px);animation:scan 14s linear infinite}
+@keyframes scan{to{background-position:0 200px}}
+/* SPLASH */
+.sp{min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:0;background:radial-gradient(ellipse 65% 55% at 50% 50%,rgba(109,251,155,.05) 0,transparent 70%);padding:40px 20px;text-align:center}
+.sp-eye{font-size:48px;margin-bottom:20px;opacity:.6;animation:eyepulse 4s ease-in-out infinite}
+@keyframes eyepulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.75;transform:scale(1.06)}}
+.sp-pre{font-size:9px;letter-spacing:.38em;color:var(--gd);margin-bottom:18px;text-transform:uppercase}
+.sp-title{font-family:'Special Elite',serif;font-size:clamp(56px,14vw,108px);line-height:.9;color:var(--g);margin-bottom:24px;text-shadow:0 0 120px rgba(109,251,155,.12)}
+.sp-rule{width:48px;height:1px;background:var(--gd);margin:0 auto 20px}
+.sp-tag{font-size:12px;color:var(--gd);letter-spacing:.08em;line-height:1.7;max-width:400px;margin-bottom:36px}
+.sp-btn{background:transparent;border:1px solid var(--g);color:var(--g);padding:13px 30px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.12em;cursor:pointer;border-radius:2px;transition:background .15s,color .15s}
+.sp-btn:hover{background:var(--g);color:#04180a}
+/* HEADER */
+.hd{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:9px 16px;border-bottom:1px solid var(--ln);background:rgba(6,14,9,.85);position:sticky;top:0;z-index:20;backdrop-filter:blur(4px)}
+.hd-l{display:flex;align-items:center;gap:10px}
+.hd-title{font-size:10px;letter-spacing:.14em;font-weight:600;color:var(--g)}
+.hd-sub{font-size:8px;color:var(--gd);margin-top:2px;letter-spacing:.06em}
+.hd-r{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hd-timer{font-size:11px;font-weight:600;letter-spacing:.06em;background:rgba(109,251,155,.05);border:1px solid var(--ln);padding:4px 9px;border-radius:2px;display:flex;align-items:center;gap:5px}
+.hd-dots{display:flex;gap:3px}
+.hd-dot{width:6px;height:6px;border-radius:50%;background:var(--gd);border:1px solid var(--gd);transition:all .3s}
+.hd-dot.done{background:var(--g);border-color:var(--g)}
+.hd-dot.cur{background:transparent;border-color:var(--g);box-shadow:0 0 7px rgba(109,251,155,.5)}
+.hd-btn{background:transparent;border:1px solid var(--gd);color:var(--gd);padding:5px 8px;border-radius:2px;cursor:pointer;font-size:11px;transition:color .15s,border-color .15s}
+.hd-btn:hover{color:var(--g);border-color:var(--g)}
+/* MAIN / STAGE */
+.main{display:flex;justify-content:center;padding:22px 14px 60px;position:relative;z-index:2}
+.stage{width:100%;max-width:780px}
+.fade-in{animation:fadein .4s ease both}
+@keyframes fadein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* DIALOGUE */
+.dlg{background:var(--panel);border:1px solid var(--ln);border-radius:4px;padding:22px 18px 18px;min-height:420px;display:flex;flex-direction:column;position:relative;box-shadow:0 0 100px rgba(0,0,0,.6),inset 0 0 60px rgba(0,0,0,.4)}
+.dlg::before{content:"ARCHIVE LINK — SECURE";position:absolute;top:10px;right:14px;font-size:7px;letter-spacing:.18em;color:var(--gd);opacity:.6}
+.dlg-hist{display:flex;flex-direction:column;gap:5px;margin-bottom:8px;flex:1}
+.dlg-ghost-row{display:flex}
+.dlg-gl{justify-content:flex-start}
+.dlg-gr{justify-content:flex-end}
+.dlg-ghost{font-size:10px;color:rgba(109,251,155,.35);max-width:74%;padding:4px 8px;border-radius:3px;background:rgba(109,251,155,.02);line-height:1.5;font-style:italic}
+.dlg-active{display:flex;align-items:flex-start;gap:11px;padding:4px 0;margin-top:auto}
+.dlg-left{flex-direction:row}.dlg-right{flex-direction:row-reverse}
+.dlg-av{width:40px;height:40px;border:2px solid;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(0,0,0,.5);font-size:18px}
+.dlg-bwrap{display:flex;flex-direction:column;gap:3px;max-width:calc(100% - 56px)}
+.dlg-name{font-size:8px;letter-spacing:.16em;font-weight:600;text-transform:uppercase}
+.dlg-bub{padding:11px 14px;border-radius:4px;font-size:12.5px;line-height:1.75;font-family:'Special Elite',serif}
+.dlg-bub-n{background:rgba(109,251,155,.055);border:1px solid rgba(109,251,155,.18);color:var(--g)}
+.dlg-bub-s{background:rgba(160,184,168,.07);border:1px solid rgba(160,184,168,.15);color:#9ab0a0;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.04em}
+.dlg-bub-u{background:rgba(200,232,255,.06);border:1px solid rgba(200,232,255,.15);color:var(--ub)}
+.dlg-typing{display:flex;gap:4px;padding:12px 16px;align-items:center}
+.dlg-dot-anim{width:6px;height:6px;border-radius:50%;background:var(--gd);animation:dotpulse 1.2s ease-in-out infinite}
+.dlg-dot-anim:nth-child(2){animation-delay:.2s}.dlg-dot-anim:nth-child(3){animation-delay:.4s}
+@keyframes dotpulse{0%,80%,100%{opacity:.3}40%{opacity:1}}
+.dlg-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--ln);padding-top:12px;margin-top:10px}
+.dlg-dots{display:flex;gap:3px;flex-wrap:wrap;max-width:50%}
+.dlg-pdot{width:5px;height:5px;border-radius:50%;background:var(--gd);transition:all .2s}
+.dlg-pdot.a{background:var(--g);transform:scale(1.4)}
+.dlg-pdot.d{background:var(--gd)}
+.dlg-next{background:transparent;border:1px solid var(--g);color:var(--g);padding:7px 16px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.09em;cursor:pointer;border-radius:2px;display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s}
+.dlg-next:hover{background:var(--g);color:#04180a}
+/* PUZZLE */
+.pz{border:1px solid var(--pe);background:var(--paper);color:var(--ink);border-radius:3px;padding:22px 18px 18px;box-shadow:0 14px 50px rgba(0,0,0,.55);position:relative;overflow:hidden}
+.pz::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,rgba(28,24,16,.3),transparent)}
+.pz-stamp{display:inline-block;font-size:9px;letter-spacing:.18em;padding:2px 8px;border:1px solid var(--am);color:var(--am);margin-bottom:10px}
+.pz-title{font-family:'Special Elite',serif;font-size:21px;color:var(--ink);margin:5px 0 7px}
+.pz-prompt{font-size:11px;color:#4a4030;line-height:1.7;margin-bottom:14px}
+.pz-doc{font-family:'Special Elite',serif;font-size:12.5px;line-height:1.75;color:var(--ink);margin-bottom:8px}
+.row{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.inp{flex:1;min-width:120px;background:rgba(0,0,0,.06);border:1px solid #9a9278;color:var(--ink);padding:8px 9px;font-family:'IBM Plex Mono',monospace;font-size:12px;border-radius:2px;outline:none}
+.inp:focus{border-color:#4a4030}
+.inp::placeholder{color:#9a8a6a}
+.inp:disabled{opacity:.5}
+.btn{background:transparent;border:1px solid var(--ink);color:var(--ink);padding:8px 15px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.07em;cursor:pointer;border-radius:2px;transition:background .15s,color .15s}
+.btn:hover:not(:disabled){background:var(--ink);color:var(--paper)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:5px 9px;font-size:10px}
+.btn-ghost{border-color:#9a9278;color:#5a5240}
+.link-btn{background:none;border:none;color:#6b5e3a;text-decoration:underline dotted;font-family:inherit;font-size:10px;cursor:pointer;padding:3px 0;letter-spacing:.04em;display:block;margin:5px 0}
+.status{display:flex;align-items:center;gap:6px;font-size:11px;margin-top:10px;padding:6px 9px;border-radius:2px}
+.status.ok{color:#1f5e30;background:rgba(31,94,48,.08);border:1px solid rgba(31,94,48,.2)}
+.status.err{color:#7a1a1a;background:rgba(122,26,26,.08);border:1px solid rgba(122,26,26,.2)}
+/* COOLDOWN */
+.cd-overlay{position:absolute;inset:0;background:rgba(6,14,9,.94);z-index:50;display:flex;align-items:center;justify-content:center;border-radius:3px;backdrop-filter:blur(2px)}
+.cd-box{text-align:center;padding:28px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.cd-icon{font-size:26px;width:56px;height:56px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-weight:700}
+.cd-wrong{background:rgba(255,64,64,.1);color:var(--re);border:2px solid rgba(255,64,64,.35)}
+.cd-hint{background:rgba(109,251,155,.07);color:var(--g);border:2px solid rgba(109,251,155,.25)}
+.cd-title{font-size:13px;letter-spacing:.1em;font-weight:600}
+.cd-msg{font-size:10px;color:var(--gd);letter-spacing:.04em;line-height:1.5;max-width:220px}
+.cd-timer{font-size:34px;font-weight:600;color:var(--am);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+.cd-bar-w{width:180px;height:3px;background:rgba(255,178,56,.15);border-radius:2px;overflow:hidden}
+.cd-bar{height:100%;background:var(--am);transition:width 1s linear;border-radius:2px}
+/* HINTS */
+.hint-zone{margin-top:14px;border:1px solid rgba(107,94,58,.3);border-radius:3px;overflow:hidden}
+.hint-label{font-size:9px;letter-spacing:.14em;padding:6px 10px;background:rgba(107,94,58,.05);color:#7a6e50;border-bottom:1px solid rgba(107,94,58,.2)}
+.hint-item{border-bottom:1px solid rgba(107,94,58,.12)}
+.hint-item:last-child{border-bottom:none}
+.hint-revealed{padding:8px 10px;font-size:10.5px;color:#4a4030;line-height:1.6;display:flex;gap:9px;font-family:'Special Elite',serif}
+.hint-num{font-size:8px;color:#9a8a6a;letter-spacing:.1em;white-space:nowrap;padding-top:2px;min-width:46px}
+.hint-btn{width:100%;background:transparent;border:none;padding:9px 10px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:10px;color:#9a8a6a;cursor:pointer;letter-spacing:.04em;transition:color .15s,background .15s}
+.hint-btn:hover:not(:disabled){background:rgba(107,94,58,.05);color:#6b5e3a}
+.hint-btn:disabled{cursor:not-allowed;opacity:.4}
+/* P1 */
+.p1-log{display:flex;flex-direction:column;gap:4px;margin:10px 0}
+.p1-entry{border:1px solid var(--pe);padding:9px;cursor:pointer;transition:background .1s;border-radius:2px}
+.p1-entry:hover,.p1-entry.open{background:rgba(0,0,0,.04)}
+.p1-time{font-size:9px;color:#9a8a6a;margin-right:9px;letter-spacing:.04em}
+.p1-raw{font-size:11px;color:var(--ink);font-family:'Special Elite',serif}
+.p1-dec{margin-top:6px;font-size:12px;font-weight:600;color:#1a3a1f;background:rgba(26,58,31,.06);padding:4px 8px;border-left:2px solid #1a3a1f}
+/* P2 */
+.p2-tbl{border:1px solid var(--pe);border-radius:2px;overflow:hidden;margin:10px 0;font-size:10px;overflow-x:auto}
+.p2-hd,.p2-row{display:grid;grid-template-columns:26px 1fr 1fr 32px 50px 50px 32px;gap:0;padding:5px 7px}
+.p2-hd{background:rgba(0,0,0,.06);font-weight:600;letter-spacing:.05em;color:#46402e}
+.p2-row{border-top:1px solid var(--pe);cursor:pointer;transition:background .1s}
+.p2-row:hover{background:rgba(0,0,0,.03)}
+.p2-row.flagged{background:rgba(122,26,26,.07)}
+.p2-sel{font-size:10px;color:#7a1a1a;margin-top:4px;padding:4px 7px;border-left:2px solid #7a1a1a}
+/* P3 */
+.p3-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0}
+.p3-c{border:1px solid var(--pe);padding:10px;cursor:pointer;transition:background .15s;border-radius:2px}
+.p3-c:hover,.p3-c.open{background:rgba(0,0,0,.04)}
+.p3-c.imp{border-color:rgba(122,26,26,.35);background:rgba(122,26,26,.03)}
+.p3-f{font-family:'Special Elite',serif;font-size:15px;color:var(--ink);margin-bottom:4px}
+.p3-det{margin-top:5px;font-size:10px}
+.p3-bk{color:#6b5e3a;margin-bottom:3px}
+.p3-sm{font-weight:600;color:var(--ink)}
+.p3-ltr{color:#1a3a1f;font-weight:600;margin-top:2px}
+.p3-no{color:#7a1a1a;font-weight:600;margin-top:2px}
+/* P4 */
+.p4-gw{margin:10px 0;overflow-x:auto;border:1px solid var(--pe);border-radius:2px}
+.p4-hrow,.p4-row2{display:flex}
+.p4-rc,.p4-ch,.p4-rh{width:26px;font-size:8px;color:#9a8a6a;padding:3px;display:flex;align-items:center;justify-content:center}
+.p4-ch,.p4-rh{border-left:1px solid var(--pe);background:rgba(0,0,0,.04)}
+.p4-rh{border-left:none;border-top:1px solid var(--pe)}
+.p4-cell{width:26px;height:26px;font-size:11px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--pe);border-top:1px solid var(--pe);color:var(--ink)}
+.p4-cell.cor{background:rgba(122,26,26,.1);color:#7a1a1a;font-weight:700}
+.p4-sl{border:1px solid var(--pe);border-radius:2px;overflow:hidden;margin:10px 0}
+.p4-sl-hd{font-size:9px;letter-spacing:.1em;padding:5px 8px;background:rgba(0,0,0,.04);color:#46402e;border-bottom:1px solid var(--pe)}
+.p4-sl-r{padding:6px 8px;border-bottom:1px solid var(--pe);font-size:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.p4-sl-r:last-child{border-bottom:none}
+.p4-sl-lb{font-weight:700;color:var(--ink);min-width:50px}
+.p4-sl-p{color:#6b5e3a;font-size:9px;flex:1;word-break:break-all}
+.p4-cor-tag{font-size:9px;color:#7a1a1a;white-space:nowrap}
+/* P5 */
+.p5-ws{display:flex;flex-direction:column;gap:5px;margin:10px 0}
+.p5-w{border:1px solid var(--pe);border-radius:2px;overflow:hidden}
+.p5-wh{width:100%;background:rgba(0,0,0,.04);border:none;padding:9px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink);text-align:left}
+.p5-wid{font-weight:600;flex:1}.p5-wt{font-size:9px;color:#9a8a6a}
+.p5-stmts{display:flex;flex-direction:column}
+.p5-s{display:flex;align-items:flex-start;gap:8px;padding:7px 10px;cursor:pointer;border-top:1px solid var(--pe);transition:background .1s;font-size:11px}
+.p5-s:hover{background:rgba(0,0,0,.03)}.p5-s.fl{background:rgba(122,26,26,.06)}
+.p5-fl{font-size:10px;color:#9a8a6a;min-width:36px;flex-shrink:0}
+.p5-s.fl .p5-fl{color:#7a1a1a}
+.p5-st{color:var(--ink);line-height:1.6;font-family:'Special Elite',serif}
+/* P6 */
+.p6-term{background:#090e0b;border:1px solid rgba(109,251,155,.18);border-radius:2px;padding:13px;margin:10px 0;font-family:'IBM Plex Mono',monospace}
+.p6-path{font-size:9px;color:var(--gd);margin-bottom:5px;word-break:break-all;line-height:1.6}
+.p6-letters{font-size:14px;color:var(--g);font-weight:600;margin-bottom:10px;letter-spacing:.08em}
+.p6-cur{border:1px solid var(--ln);padding:10px;border-radius:2px}
+.p6-nd{font-size:9px;color:var(--gd);margin-bottom:5px;letter-spacing:.06em}
+.p6-et{font-size:11px;color:var(--g);line-height:1.65;margin-bottom:8px}
+.p6-fl{background:transparent;border:1px solid var(--g);color:var(--g);padding:5px 11px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;border-radius:2px;transition:background .15s}
+.p6-fl:hover:not(:disabled){background:var(--g);color:#04180a}
+.p6-fl:disabled{opacity:.4;cursor:not-allowed}
+.p6-end{font-size:10px;color:var(--am);letter-spacing:.06em}
+.p6-man{display:flex;align-items:center;gap:8px;margin:8px 0;flex-wrap:wrap}
+.p6-manlb{font-size:10px;color:var(--gd)}
+/* P7 */
+.p7-w{margin:10px 0;border:1px solid var(--pe);border-radius:2px;overflow:hidden}
+.p7-rules{padding:10px;background:rgba(122,26,26,.03);border-bottom:1px solid var(--pe)}
+.p7-rh{font-size:9px;letter-spacing:.12em;color:#7a1a1a;margin-bottom:6px;font-weight:600}
+.p7-rule{font-size:10px;color:#5a2a2a;padding:2px 0;line-height:1.5}
+.p7-rooms{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--pe)}
+.p7-room{padding:7px;border-right:1px solid var(--pe);border-bottom:1px solid var(--pe);font-size:9px}
+.p7-room:nth-child(3n){border-right:none}
+.p7-room.hl{background:rgba(26,58,31,.05)}
+.p7-rid{display:block;font-weight:700;font-size:10px;color:var(--ink);margin-bottom:2px}
+.p7-rn{display:block;color:#46402e;margin-bottom:2px;line-height:1.3}
+.p7-ra{display:block;color:#9a8a6a;font-size:8px;margin-bottom:2px}
+.p7-rl{display:block;color:var(--ink);font-weight:600}
+.p7-ht{color:#1a3a1f;margin-left:3px}
+.p7-vs{padding:10px;border-bottom:1px solid var(--pe);display:flex;flex-direction:column;gap:5px}
+.p7-vh{font-size:9px;letter-spacing:.1em;color:#46402e;margin-bottom:4px}
+.p7-vp{background:transparent;border:1px solid var(--pe);padding:7px 9px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-align:left;color:#6b5e3a;border-radius:2px;transition:background .15s}
+.p7-vp:hover{background:rgba(122,26,26,.03);border-color:rgba(122,26,26,.25);color:#7a1a1a}
+.p7-vp.fl{background:rgba(122,26,26,.07);border-color:rgba(122,26,26,.38);color:#7a1a1a}
+.p7-corr{padding:10px}
+.p7-ch{font-size:9px;color:#46402e;letter-spacing:.08em;margin-bottom:8px}
+.p7-cr{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:10px;flex-wrap:wrap}
+.p7-ci{width:36px;height:30px;border:1px solid var(--pe);background:rgba(0,0,0,.04);text-align:center;font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:700;color:var(--ink);border-radius:2px}
+/* P8 */
+.p8-st{margin:10px 0;border:1px solid var(--pe);border-radius:2px;overflow:hidden}
+.p8-sth{font-size:9px;letter-spacing:.1em;padding:5px 9px;background:rgba(0,0,0,.04);color:#46402e;border-bottom:1px solid var(--pe)}
+.p8-stg{display:flex;flex-wrap:wrap}
+.p8-stc{display:flex;flex-direction:column;align-items:center;padding:7px 10px;border-right:1px solid var(--pe);border-bottom:1px solid var(--pe);min-width:46px}
+.p8-sy{font-size:18px;line-height:1;margin-bottom:4px}
+.p8-lt{font-size:10px;font-weight:600;color:var(--ink);letter-spacing:.06em}
+.p8-seqs{display:flex;flex-direction:column;gap:5px;margin:10px 0}
+.p8-sc{border:1px solid var(--pe);border-radius:2px;overflow:hidden}
+.p8-sh{width:100%;background:rgba(0,0,0,.04);border:none;padding:8px 10px;display:flex;align-items:center;gap:8px;cursor:pointer;font-family:'IBM Plex Mono',monospace;text-align:left}
+.p8-sh span:first-child{font-size:11px;font-weight:700;color:var(--ink);min-width:82px}
+.p8-sr{font-size:9px;color:#6b5e3a;flex:1;line-height:1.4}
+.p8-sb{padding:10px;border-top:1px solid var(--pe)}
+.p8-syms{display:flex;gap:3px;flex-wrap:wrap;margin-bottom:8px}
+.p8-sym{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 6px;border:1px solid var(--pe);border-radius:2px;min-width:32px}
+.p8-sym.intr{border-color:rgba(122,26,26,.45);background:rgba(122,26,26,.05)}
+.p8-si{font-size:7px;color:#9a8a6a}
+.p8-sv{font-size:15px}
+.p8-in{font-size:10px;color:#7a1a1a;margin-bottom:8px}
+.p8-ar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10px}
+.p8-ai{width:40px;height:32px;border:1px solid var(--pe);background:rgba(0,0,0,.04);text-align:center;font-size:15px;border-radius:2px;outline:none}
+.p8-al{color:#1a3a1f;font-weight:600}
+/* P9 */
+.p9-dos{border:1px solid var(--pe);border-radius:2px;overflow:hidden;margin:10px 0;background:rgba(0,0,0,.02)}
+.p9-dh{padding:11px 13px;background:rgba(0,0,0,.05);font-family:'Special Elite',serif;font-size:15px;border-bottom:1px solid var(--pe);color:var(--ink)}
+.p9-ds{padding:5px 13px;font-size:9px;letter-spacing:.1em;color:#9a8a6a;border-bottom:1px solid var(--pe)}
+.p9-f{display:flex;flex-direction:column;gap:3px;padding:9px 13px;border-bottom:1px solid var(--pe)}
+.p9-f:last-child{border-bottom:none}
+.p9-lb{font-size:9px;letter-spacing:.1em;color:#6b5e3a;font-weight:600}
+.p9-in{width:100%;background:transparent;border:none;border-bottom:1px solid var(--pe);padding:4px 0;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--ink);outline:none;transition:border-color .15s}
+.p9-in:focus{border-bottom-color:var(--ink)}
+.p9-in:disabled{opacity:.5}
+.p9-in::placeholder{color:#c0b498;font-size:10px}
+/* FINALE */
+.fin{background:var(--panel);border:1px solid var(--ln);border-radius:4px;padding:32px 24px;box-shadow:0 0 100px rgba(109,251,155,.04);text-align:center}
+.fin-eye{font-size:40px;margin-bottom:18px;opacity:.65}
+.fin-title{font-family:'Special Elite',serif;font-size:28px;color:var(--g);margin:10px 0 18px}
+.fin-time{font-size:38px;font-weight:600;color:var(--g);letter-spacing:.06em;margin-bottom:10px;font-variant-numeric:tabular-nums}
+.fin-rank{font-size:11px;color:var(--am);letter-spacing:.1em;margin-bottom:24px;padding:7px 14px;border:1px solid rgba(255,178,56,.28);display:inline-block;border-radius:2px}
+.fin-story{display:flex;flex-direction:column;gap:14px;margin-bottom:24px;border:1px solid var(--ln);padding:18px;border-radius:3px;text-align:left}
+.fin-story p{font-size:11.5px;color:var(--gd);line-height:1.8}
+.fin-q{color:var(--g) !important;font-family:'Special Elite',serif;font-size:14px !important}
+@media(max-width:560px){
+  .p3-grid,.p7-rooms{grid-template-columns:repeat(2,1fr)}
+  .p2-hd,.p2-row{grid-template-columns:22px 1fr 1fr 26px 40px 40px 26px;font-size:8.5px}
+  .p4-cell,.p4-ch,.p4-rh,.p4-rc{width:22px;height:22px;font-size:9px}
+  .dlg-bub{font-size:11px}
+}
+@media(prefers-reduced-motion:reduce){
+  .root::before,.sp-eye,.dlg-dot-anim{animation:none}
+  .fade-in{animation:none}
+}
+`;
 
-/* ── DIALOGUE ENGINE ── */
-const DEFAULT_PAUSE = 2400;
-function DialogueCutscene({ sceneKey, onComplete }: DialogueCutsceneProps) {
+/* ── SCENE DATA ── */
+const CHARS = {
+  ARCHIVIST: { name: "Archivist",  avatar: "🗂",  color: "#6dfb9b" },
+  SYSTEM:    { name: "SYSTEM",     avatar: "⬛",  color: "#a0b8a8" },
+  USER:      { name: "You",        avatar: "🔍",  color: "#c8e8ff" },
+  VOSS:      { name: "Dir. Voss",  avatar: "👁",  color: "#ffb238" },
+};
+const SCENES = {
+  intro:[
+    {c:"SYSTEM",t:"ARCHIVE ACCESS INITIALISED — 03:17:44"},
+    {c:"SYSTEM",t:"Loading case file... BROKEN DECK... classification depth: LEVEL IX."},
+    {c:"ARCHIVIST",t:"You're in. I wasn't sure the old terminal would accept the token."},
+    {c:"USER",t:"What is this place?"},
+    {c:"ARCHIVIST",t:"A research facility. Government contract. Shuttered 1972 — no official explanation was ever given."},
+    {c:"ARCHIVIST",t:"Investigators found a sealed sub-level years later. Four cabinets in a row. No names on the doors — just card suits."},
+    {c:"USER",t:"What happened to the people who went inside?"},
+    {c:"ARCHIVIST",t:"Each one reported something different. A city. A library. A childhood memory they didn't own."},
+    {c:"ARCHIVIST",t:"But every single subject, independently, came back saying the exact same thing."},
+    {c:"USER",t:"What did they say?"},
+    {c:"ARCHIVIST",t:"That's still sealed. We unlock it piece by piece. The first layer is the radio logs — there's a transmission from the final night that's been hiding in plain sight for fifty years."},
+  ],
+  beforeP1:[
+    {c:"ARCHIVIST",t:"The facility ran shortwave radio. Every transmission was logged, timestamped, filed."},
+    {c:"ARCHIVIST",t:"The log from the final night looks like ordinary noise. Static. Dead air. Operator chatter."},
+    {c:"USER",t:"What am I actually looking at?"},
+    {c:"ARCHIVIST",t:"Someone embedded a message inside the punctuation. Dots and dashes. Old wartime habit — operators used to do it when they couldn't speak openly."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'If anyone finds this, the date matters. The date is everything.'"},
+    {c:"ARCHIVIST",t:"Six words decoded from the punctuation. Five are anagrams of each other. The one that isn't — that's your date."},
+  ],
+  afterP1:[
+    {c:"SYSTEM",t:"TRANSMISSION DATE — VERIFIED."},
+    {c:"USER",t:"October 14th. Hidden in a radio log for fifty years."},
+    {c:"ARCHIVIST",t:"The operator knew it would be reviewed. So they buried it in the noise."},
+    {c:"ARCHIVIST",t:"Cross-referencing that date pulls up a staff roster. Twelve people were in the facility that night."},
+    {c:"USER",t:"Are any of them still alive?"},
+    {c:"ARCHIVIST",t:"Three confirmed deceased. The rest — no record. Someone deliberately erased them from the personnel ledger. But they weren't careful enough."},
+  ],
+  beforeP2:[
+    {c:"ARCHIVIST",t:"Here's the ledger. Twelve entries, one for each person logged that night."},
+    {c:"USER",t:"What exactly am I checking?"},
+    {c:"ARCHIVIST",t:"Timestamps. Clearance levels. Department assignments. Someone edited this after the fact — but they made three mistakes."},
+    {c:"VOSS",t:"[RECOVERED MEMO] — 'Ensure the primary witnesses cannot be traced. Adjust the record accordingly. Leave no thread.'"},
+    {c:"ARCHIVIST",t:"The initials of those three entries, in the order their contradictions appear in the ledger, spell your next code."},
+    {c:"USER",t:"They hid the key inside the thing they were trying to erase."},
+    {c:"ARCHIVIST",t:"Whoever did this was arrogant. Thought no one would look closely enough."},
+  ],
+  afterP2:[
+    {c:"SYSTEM",t:"LEDGER CONTRADICTIONS — IDENTIFIED."},
+    {c:"USER",t:"EK4. Three erased witnesses."},
+    {c:"ARCHIVIST",t:"That code opens the secondary archive. There's a blackboard photograph in here — taken inside the main laboratory the night it was shut down."},
+    {c:"USER",t:"Chemical formulas."},
+    {c:"ARCHIVIST",t:"They were running compound analysis alongside the cabinet experiments. But one of these formulas doesn't exist. It's a decoy — planted to confuse anyone who came looking."},
+    {c:"USER",t:"How do I tell which one?"},
+    {c:"ARCHIVIST",t:"Basic chemistry. One of those compounds is impossible by the rules of bonding. Eliminate it. The rest encode something."},
+  ],
+  beforeP3:[
+    {c:"ARCHIVIST",t:"Six compounds on the blackboard. Your job is to sum the atomic numbers for each."},
+    {c:"VOSS",t:"[RECOVERED LOG] — 'The summation values lead the way. Discard the impossible. Read what remains.'"},
+    {c:"USER",t:"And the impossible one?"},
+    {c:"ARCHIVIST",t:"Noble gases don't form bonds. If you see one in a compound formula, it's the decoy. Discard it."},
+    {c:"ARCHIVIST",t:"Each valid sum maps to a position in the alphabet — 1 is A, 26 is Z. Five compounds. Five letters. One word."},
+    {c:"USER",t:"What word?"},
+    {c:"ARCHIVIST",t:"That's what you're going to find out."},
+  ],
+  afterP3:[
+    {c:"SYSTEM",t:"BLACKBOARD CIPHER — DECODED."},
+    {c:"USER",t:"DELTA. The word is DELTA."},
+    {c:"ARCHIVIST",t:"That's the internal codename for the sub-level. The chamber where the cabinets were kept."},
+    {c:"USER",t:"Why DELTA?"},
+    {c:"ARCHIVIST",t:"Fourth letter of the Greek alphabet. Four cabinets. They liked their symmetry — it shows up everywhere in this project."},
+    {c:"ARCHIVIST",t:"There's a frequency monitoring grid in the archive. They scanned for electromagnetic anomalies during experiments. One scan line got corrupted."},
+    {c:"VOSS",t:"[RECOVERED NOTE] — 'The grid is symmetric. What the corruption took, the symmetry returns.'"},
+  ],
+  beforeP4:[
+    {c:"ARCHIVIST",t:"Eight-by-eight grid. Four diagonal scan lines crossing it. Each cell holds a reading from 1 to 9."},
+    {c:"USER",t:"What do I do with it?"},
+    {c:"ARCHIVIST",t:"Average the values along each scan line. Round down. That gives you one digit per line — four digits total."},
+    {c:"ARCHIVIST",t:"Except scan line GAMMA has a corrupted cell. Marked as unknown. You need to recover it before you can average the line."},
+    {c:"USER",t:"How?"},
+    {c:"ARCHIVIST",t:"The grid was built with 180° rotational symmetry. Every cell has a mirror on the opposite side. Cell (row, col) mirrors to cell (7−row, 7−col). Find the mirror. That's your missing value."},
+    {c:"VOSS",t:"[RECOVERED MEMO] — 'The symmetry was intentional. It was always meant to be reconstructable by someone patient enough to look.'"},
+  ],
+  afterP4:[
+    {c:"SYSTEM",t:"FREQUENCY PIN — RECOVERED."},
+    {c:"USER",t:"7-2-9-4. Four digits from the anomaly readings."},
+    {c:"ARCHIVIST",t:"That PIN unlocks the witness archive. Five testimonies from five subjects who entered the cabinets."},
+    {c:"USER",t:"I thought the testimonies were classified."},
+    {c:"ARCHIVIST",t:"They were. Someone filed them under the wrong clearance level. Either a mistake — or they wanted them found eventually."},
+    {c:"USER",t:"What's wrong with them?"},
+    {c:"ARCHIVIST",t:"Each one contains a single lie. Not obvious. Internal contradictions — a time that doesn't add up, a room that can't connect to another, a claim another witness directly contradicts."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'Strip away what can't be true. What remains is the location.'"},
+  ],
+  beforeP5:[
+    {c:"ARCHIVIST",t:"Five witness statements. Read every line carefully."},
+    {c:"USER",t:"One lie per witness?"},
+    {c:"ARCHIVIST",t:"Exactly one. Find it. Flag it. The key word in the remaining true statements — one per witness, first three witnesses — assembles your answer in order."},
+    {c:"ARCHIVIST",t:"The answer is a location. Three words. Where every subject ended up inside the cabinet — described differently by each person, but always drawn the same way."},
+    {c:"VOSS",t:"[RECOVERED NOTE] — 'They all went to the same place. They just didn't have the same words for it.'"},
+  ],
+  afterP5:[
+    {c:"SYSTEM",t:"DESTINATION — IDENTIFIED."},
+    {c:"USER",t:"The Null Room. That's what they called it."},
+    {c:"ARCHIVIST",t:"Every subject, independently. A room with no walls they could describe. No dimensions. Just — presence."},
+    {c:"USER",t:"That's not possible."},
+    {c:"ARCHIVIST",t:"The formal documentation is buried in the archive index under a chain of cross-references. Dead ends were planted to slow anyone down."},
+    {c:"ARCHIVIST",t:"You'll know a dead end because it loops — it sends you somewhere you've already been. The real chain doesn't loop."},
+    {c:"VOSS",t:"[RECOVERED MEMO] — 'The chain leads where it leads. Follow it without shortcuts and you'll find the name of the project itself.'"},
+  ],
+  beforeP6:[
+    {c:"ARCHIVIST",t:"The archive index. Dozens of entries. Each has a cross-reference code pointing to the next."},
+    {c:"USER",t:"Starting point?"},
+    {c:"ARCHIVIST",t:"Entry A-1. Follow its reference. Each valid node reveals one letter. Collect them in order."},
+    {c:"ARCHIVIST",t:"Dead ends exist — entries that reference themselves or circle back early. If you hit a loop, you've gone wrong. Backtrack."},
+    {c:"USER",t:"How many letters?"},
+    {c:"ARCHIVIST",t:"Eight. The path has exactly eight valid stops. What you collect spells the name of the project."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'The index was designed to be navigated by someone who knew what they were looking for. You don't. That's the entire point.'"},
+  ],
+  afterP6:[
+    {c:"SYSTEM",t:"PROJECT NAME — RETRIEVED."},
+    {c:"USER",t:"NULL-GATE. The project was called NULL-GATE."},
+    {c:"ARCHIVIST",t:"Not just NULL. NULL-GATE. The cabinet wasn't a container — it was a doorway."},
+    {c:"USER",t:"A doorway to where?"},
+    {c:"ARCHIVIST",t:"The blueprint should tell us. Floor plan of the facility. Numbered rooms. A substitution cipher legend."},
+    {c:"ARCHIVIST",t:"But the legend has three errors in it. Deliberate sabotage. The architectural logic of the rooms will expose them."},
+    {c:"VOSS",t:"[RECOVERED MEMO] — 'A wet lab cannot share a wall with a high-voltage room. Anyone who knew this building would catch it in seconds.'"},
+  ],
+  beforeP7:[
+    {c:"ARCHIVIST",t:"The blueprint. Twelve numbered rooms, a cipher legend mapping each room number to a letter."},
+    {c:"USER",t:"And three of those letter assignments are wrong."},
+    {c:"ARCHIVIST",t:"Three. You find them by checking adjacencies. Rooms that can't legally share a wall — fire code, safety regulations, basic physics — those pairings expose the bad legend entries."},
+    {c:"ARCHIVIST",t:"Fix the three errors. Then read the letters for rooms one through seven in sequence."},
+    {c:"USER",t:"And that spells?"},
+    {c:"ARCHIVIST",t:"The name of the entity. The thing inside the Null Room that every single subject reported encountering."},
+    {c:"VOSS",t:"[RECOVERED NOTE] — 'We gave it a name because nameless things are harder to contain in a report. The name didn't capture it. Nothing could.'"},
+  ],
+  afterP7:[
+    {c:"SYSTEM",t:"BLUEPRINT CIPHER — RESOLVED."},
+    {c:"USER",t:"WATCHER. They called it the Watcher."},
+    {c:"ARCHIVIST",t:"Every subject used a different word. Observer. Presence. Mirror. The report standardised it."},
+    {c:"USER",t:"What was it actually?"},
+    {c:"ARCHIVIST",t:"The files don't say. They only record that it was consistent. Same entity. Every cabinet. Every subject. Every session."},
+    {c:"ARCHIVIST",t:"The last record is a memory sequence archive. Subjects were shown symbol patterns after the experiment — testing what came back with them. Something interfered with position six in every sequence."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'Position six. Every single time. As if something intervened at exactly that moment and refused to let go.'"},
+  ],
+  beforeP8:[
+    {c:"ARCHIVIST",t:"Four symbol sequences. Each follows a clear rule that holds for every position — except position six."},
+    {c:"USER",t:"What broke it?"},
+    {c:"ARCHIVIST",t:"Unknown. What we can do is determine what symbol should have appeared at position six in each sequence if the rule had held."},
+    {c:"ARCHIVIST",t:"Find the correct symbol for each. Look each one up in the reference table. Collect four letters."},
+    {c:"USER",t:"And together they spell?"},
+    {c:"ARCHIVIST",t:"One final word. Then we have everything."},
+    {c:"VOSS",t:"[RECOVERED NOTE] — 'Whatever altered position six did so with consistency. That implies intention. Something intended it.'"},
+  ],
+  afterP8:[
+    {c:"SYSTEM",t:"MEMORY SEQUENCES — ANALYSED."},
+    {c:"USER",t:"ZERO. The four letters spell ZERO."},
+    {c:"ARCHIVIST",t:"NULL-GATE. ZERO. The project was about absence. About what lives inside nothing."},
+    {c:"USER",t:"And the Watcher was inside the absence."},
+    {c:"ARCHIVIST",t:"You have everything now. Every answer. Every fragment. The final dossier is locked behind all of it — eight fields, eight answers."},
+    {c:"ARCHIVIST",t:"Six come from the puzzles you've solved. Two come from something else entirely — things said aloud in these rooms, not written in any file."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'Pay attention to what people say. Not just what they write down. That's always where the truth actually lives.'"},
+  ],
+  beforeP9:[
+    {c:"ARCHIVIST",t:"This is the final lock. Eight blanks. Fill them all and the dossier opens."},
+    {c:"USER",t:"Six from the puzzles. Two from the record."},
+    {c:"ARCHIVIST",t:"Two details spoken aloud during the course of this investigation. Not in any file. Not on any blackboard. You heard them — if you were listening."},
+    {c:"USER",t:"What are they?"},
+    {c:"ARCHIVIST",t:"I can't tell you. If you were paying attention, you already have them. If not — go back."},
+    {c:"VOSS",t:"[RECOVERED AUDIO] — 'The founding year was 1967. I built this place with my own hands. I know exactly where every secret is buried.'"},
+    {c:"ARCHIVIST",t:"Fill in all eight. Submit. The archive opens."},
+  ],
+  final:[
+    {c:"SYSTEM",t:"FINAL DOSSIER — UNLOCKED."},
+    {c:"SYSTEM",t:"Loading complete case file... BROKEN DECK..."},
+    {c:"USER",t:"It's all here. Every experiment. Every subject. Every report they tried to bury."},
+    {c:"ARCHIVIST",t:"NULL-GATE ran for five years. Sixty-three subjects. All voluntary. All informed. None of them could have known what they were agreeing to."},
+    {c:"USER",t:"And the Watcher?"},
+    {c:"ARCHIVIST",t:"Still in the record. Described the same way by every person who entered, across five years, across all four cabinets."},
+    {c:"USER",t:"Did they ever close the gate?"},
+    {c:"ARCHIVIST",t:"They shut down the facility. Voss signed the order himself. Whether the gate was ever actually closed —"},
+    {c:"SYSTEM",t:"ARCHIVE CLOSED. Case file logged: BROKEN DECK. Classification: PERMANENT."},
+  ],
+};
+
+/* ── DIALOGUE ── */
+function Dialogue({ sceneKey, onComplete }) {
   const lines = SCENES[sceneKey] || [];
-  const [current, setCurrent] = useState(0);
-  const [locked, setLocked] = useState(true);
+  const [cur, setCur] = useState(0);
+  const [typing, setTyping] = useState(true);
   const [visible, setVisible] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    setTyping(true);
     setVisible(false);
-    const t1 = setTimeout(() => setVisible(true), 80);
-    setLocked(true);
-    timerRef.current = setTimeout(() => setLocked(false), lines[current]?.pause ?? DEFAULT_PAUSE);
-    return () => {
-      clearTimeout(t1);
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [current, sceneKey]);
+    const t = setTimeout(() => {
+      setTyping(false);
+      setTimeout(() => setVisible(true), 60);
+    }, 700 + Math.random() * 400);
+    return () => clearTimeout(t);
+  }, [cur]);
 
   function advance() {
-    if (locked) return;
-    if (current < lines.length - 1) setCurrent(c => c + 1);
+    if (cur < lines.length - 1) setCur(c => c + 1);
     else onComplete();
   }
 
-  const line = lines[current];
+  const line = lines[cur];
   if (!line) return null;
-  const char = CHARS[line.char as keyof typeof CHARS];
-  const isUser = line.char === "USER";
-  const isSystem = line.char === "SYSTEM";
+  const ch = CHARS[line.c];
+  const isU = line.c === "USER";
+  const isSys = line.c === "SYSTEM";
 
   return (
-    <div className="dlg-scene">
-      <div className="dlg-history">
-        {lines.slice(0, current).map((l, i) => {
-          const isU = l.char === "USER";
+    <div className="dlg fade-in">
+      <div className="dlg-hist">
+        {lines.slice(0, cur).map((l, i) => {
+          const iu = l.c === "USER";
           return (
-            <div key={i} className={`dlg-ghost-row ${isU ? "dlg-ghost-right" : "dlg-ghost-left"}`}>
-              <div className="dlg-ghost-bubble">{l.text}</div>
+            <div key={i} className={`dlg-ghost-row ${iu ? "dlg-gr" : "dlg-gl"}`}>
+              <div className="dlg-ghost">{l.t}</div>
             </div>
           );
         })}
       </div>
-      <div className={`dlg-active ${visible?"dlg-active-in":""} ${isUser?"dlg-active-right":"dlg-active-left"}`}>
-        {!isUser && (
-          <div className="dlg-avatar" style={{ borderColor: char.color, borderRadius: isSystem?"4px":"50%" }}>
-            <span className="dlg-avatar-emoji">{char.avatar}</span>
+      <div className={`dlg-active ${isU ? "dlg-right" : "dlg-left"}`}>
+        {!isU && (
+          <div className="dlg-av" style={{ borderColor: ch.color, borderRadius: isSys ? "4px" : "50%" }}>
+            <span>{ch.avatar}</span>
           </div>
         )}
-        <div className="dlg-bubble-wrap">
-          <div className="dlg-speaker-name" style={{ color: char.color, textAlign: isUser?"right":"left" }}>{char.name}</div>
-          <div className={`dlg-bubble ${isUser?"dlg-bubble-user":isSystem?"dlg-bubble-sys":"dlg-bubble-npc"}`}>{line.text}</div>
+        <div className="dlg-bwrap">
+          <div className="dlg-name" style={{ color: ch.color, textAlign: isU ? "right" : "left" }}>{ch.name}</div>
+          {typing
+            ? <div className="dlg-bub dlg-bub-n"><div className="dlg-typing"><span className="dlg-dot-anim"/><span className="dlg-dot-anim"/><span className="dlg-dot-anim"/></div></div>
+            : <div className={`dlg-bub ${isU ? "dlg-bub-u" : isSys ? "dlg-bub-s" : "dlg-bub-n"}`} style={{ opacity: visible ? 1 : 0, transition: "opacity .2s" }}>{line.t}</div>
+          }
         </div>
-        {isUser && (
-          <div className="dlg-avatar" style={{ borderColor: char.color }}>
-            <span className="dlg-avatar-emoji">{char.avatar}</span>
+        {isU && (
+          <div className="dlg-av" style={{ borderColor: ch.color }}>
+            <span>{ch.avatar}</span>
           </div>
         )}
       </div>
-      <div className="dlg-footer">
+      <div className="dlg-foot">
         <div className="dlg-dots">
-          {lines.map((_,i) => <span key={i} className={`dlg-dot ${i===current?"dlg-dot-active":i<current?"dlg-dot-done":""}`} />)}
+          {lines.map((_, i) => <span key={i} className={`dlg-pdot ${i === cur ? "a" : i < cur ? "d" : ""}`}/>)}
         </div>
-        <button className={`dlg-next-btn ${locked?"dlg-next-locked":""}`} onClick={advance} disabled={locked}>
-          {locked
-            ? <span className="dlg-lock-dots"><span/><span/><span/></span>
-            : current < lines.length-1 ? <>NEXT <ChevronRight size={13}/></> : <>PROCEED <ChevronRight size={13}/></>}
+        <button className="dlg-next" onClick={advance} disabled={typing}>
+          {cur < lines.length - 1 ? "CONTINUE ›" : "PROCEED ›"}
         </button>
       </div>
     </div>
   );
 }
 
-/* ── HINT SYSTEM ── */
-const PENALTY_SECS = 60;
-const MAX_HINTS = 3;
+/* ── COOLDOWN ── */
+function Cooldown({ seconds, reason, onDone }) {
+  const [rem, setRem] = useState(seconds);
+  useEffect(() => {
+    const iv = setInterval(() => setRem(r => {
+      if (r <= 1) { clearInterval(iv); onDone(); return 0; }
+      return r - 1;
+    }), 1000);
+    return () => clearInterval(iv);
+  }, []);
+  const isW = reason === "wrong";
+  return (
+    <div className="cd-overlay">
+      <div className="cd-box">
+        <div className={`cd-icon ${isW ? "cd-wrong" : "cd-hint"}`}>{isW ? "✗" : "💡"}</div>
+        <div className="cd-title">{isW ? "WRONG ANSWER" : "HINT UNLOCKED"}</div>
+        <div className="cd-msg">{isW ? "Terminal locked while recalibrating." : "Processing investigator lead."}</div>
+        <div className="cd-timer">{rem}s</div>
+        <div className="cd-bar-w"><div className="cd-bar" style={{ width: `${(rem / seconds) * 100}%` }}/></div>
+      </div>
+    </div>
+  );
+}
 
-function HintPanel({ hints, usedCount, onUseHint, penaltyTotal }: HintPanelProps) {
-  const [revealed, setRevealed] = useState(-1);
-  const [confirming, setConfirming] = useState(false);
-  const [nextIdx, setNextIdx] = useState<number | null>(null);
+/* ── PUZZLE SHELL ──
+   FIX: replaced manual element spread-cloning with React.cloneElement().
+   The original { ...c, props: { ...c.props, wrong, locked } } worked in practice
+   because object spread copies $$typeof, but it's non-idiomatic and triggers
+   React strict-mode warnings. React.cloneElement is the correct API and also
+   adds the key prop, eliminating the "missing key in list" console warning. */
+function Shell({ index, title, prompt, hints, children }) {
+  const [hintIdx, setHintIdx] = useState(-1);
+  const [used, setUsed] = useState([]);
+  const [cooldown, setCooldown] = useState(null);
+  const wrong = useCallback(() => setCooldown({ s: 120, r: "wrong" }), []);
+  const locked = !!cooldown;
 
-  function requestHint(idx: number) {
-    if (idx <= revealed || usedCount >= MAX_HINTS) return;
-    setNextIdx(idx);
-    setConfirming(true);
+  function useHint(i) {
+    if (locked || used.includes(i)) return;
+    setUsed(u => [...u, i]);
+    setHintIdx(i);
+    setCooldown({ s: 60, r: "hint" });
   }
-  function confirmHint() {
-    if (nextIdx !== null) {
-      onUseHint(nextIdx);
-      setRevealed(nextIdx);
-    }
-    setConfirming(false);
-  }
+
+  // FIX: use React.cloneElement to correctly inject props while preserving
+  // all existing props (including onSolve) and adding a key to silence warnings.
+  const childrenWithProps = children
+    ? (Array.isArray(children) ? children : [children]).map((child, i) =>
+        child && typeof child === "object"
+          ? React.cloneElement(child, { key: i, wrong, locked })
+          : child
+      )
+    : null;
 
   return (
-    <div className="hint-panel">
-      <div className="hint-panel-header">
-        <HelpCircle size={12}/> INVESTIGATOR LEADS
-        <span className="hint-cost-tag">+{PENALTY_SECS}s per lead · max {MAX_HINTS}</span>
-      </div>
-      {confirming && (
-        <div className="hint-confirm">
-          <AlertTriangle size={11}/> This lead costs <strong>+{PENALTY_SECS}s</strong> penalty. Proceed?
-          <div className="hint-confirm-btns">
-            <button className="bd-btn bd-btn-danger-sm" onClick={confirmHint}>ACCEPT PENALTY</button>
-            <button className="bd-btn bd-btn-ghost-sm" onClick={() => setConfirming(false)}>CANCEL</button>
-          </div>
-        </div>
+    <div className="pz fade-in" style={{ position: "relative" }}>
+      {cooldown && (
+        <Cooldown
+          key={cooldown.r + cooldown.s}
+          seconds={cooldown.s}
+          reason={cooldown.r}
+          onDone={() => setCooldown(null)}
+        />
       )}
-      <div className="hint-list">
-        {hints.map((h, i) => {
-          const isUnlocked = i <= revealed;
-          const isNext = i === usedCount && i <= revealed + 1;
-          const isBlocked = usedCount >= MAX_HINTS && !isUnlocked;
-          return (
-            <div key={i} className={`hint-item ${isUnlocked?"is-open":""}`}>
-              <button
-                className={`hint-trigger ${isUnlocked?"is-revealed":""} ${isBlocked?"is-blocked":""}`}
-                onClick={() => !isUnlocked && requestHint(i)}
-                disabled={isBlocked || (i > usedCount)}
-              >
-                <span className="hint-num">LEAD {i+1}</span>
-                {isUnlocked
-                  ? <span className="hint-text">{h}</span>
-                  : isBlocked
-                    ? <span className="hint-locked-msg">MAX LEADS REACHED</span>
-                    : i > usedCount
-                      ? <span className="hint-locked-msg">UNLOCK LEAD {i} FIRST</span>
-                      : <span className="hint-cost">+{PENALTY_SECS}s — CLICK TO REVEAL</span>}
-              </button>
+      <div className="pz-stamp">PUZZLE {index} / 9</div>
+      <h2 className="pz-title">{title}</h2>
+      <p className="pz-prompt">{prompt}</p>
+      <div>{childrenWithProps}</div>
+      {hints?.length > 0 && (
+        <div className="hint-zone">
+          <div className="hint-label">INVESTIGATOR LEADS</div>
+          {hints.map((h, i) => (
+            <div key={i} className="hint-item">
+              {used.includes(i)
+                ? <div className="hint-revealed"><span className="hint-num">LEAD {i + 1}</span>{h}</div>
+                : <button
+                    className="hint-btn"
+                    onClick={() => useHint(i)}
+                    disabled={locked || (i > 0 && !used.includes(i - 1))}
+                  >
+                    {i > 0 && !used.includes(i - 1) ? `→ UNLOCK LEAD ${i} FIRST` : `→ REVEAL LEAD ${i + 1}`}
+                  </button>
+              }
             </div>
-          );
-        })}
-      </div>
-      {penaltyTotal > 0 && (
-        <div className="hint-penalty-total">⚠ PENALTY ACCUMULATED: +{penaltyTotal}s</div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
 
-/* ── PUZZLE FRAME ── */
-function PuzzleFrame({ index, title, prompt, status, hints, hintUsed, onUseHint, penaltyTotal, children }: PuzzleFrameProps) {
-  return (
-    <div className="bd-puzzle">
-      <div className="bd-puzzle-head">
-        <span className="bd-stamp bd-tone-amber">PUZZLE {index} OF 9</span>
-        <h2 className="bd-puzzle-title">{title}</h2>
-        <p className="bd-puzzle-prompt">{prompt}</p>
-      </div>
-      <div className="bd-puzzle-body">{children}</div>
-      <HintPanel hints={hints} usedCount={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal} />
-      {status && (
-        <p className={`bd-status ${status.ok?"is-ok":"is-err"}`}>
-          {status.ok ? <Check size={13}/> : <AlertTriangle size={13}/>} {status.msg}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 1 — THE REDACTED ARTICLE (HARD)
-   Answer: 14 October 1972
-   Mechanic: 12 bars, only 2 reveal useful info.
-   Cipher: day encoded in Roman numerals hidden inside bar text.
-   Month: caption mentions "autumn equinox" — must know Oct follows Sep.
-   Extra layer: submit must be in DD-MON-YYYY format.
-   ══════════════════════════════════════════════ */
-const P1_HINTS = [
-  "The day is hidden inside two of the redacted bars as Roman numerals. Not every bar reveals something useful.",
-  "The caption doesn't name the month — but 'autumn equinox' falls in September, and the report says the experiment happened 'three weeks after'. Count forward.",
-  "The format required is DD-MON-YYYY (e.g. 09-SEP-1972). The month abbreviation must be three letters.",
+/* ── PUZZLE DATA / COMPONENTS ── */
+const P1_LINES = [
+  { time:"22:01", raw:"Transmission alpha.. —received.. Station.. clear.—.", decoded:"LISTEN" },
+  { time:"22:04", raw:"Signal.. noise—ratio.. nominal.—.. Awaiting.. confirm.", decoded:"TINSEL" },
+  { time:"22:09", raw:"Operator..— Enfield.. signing.. on.— Stand.. by.", decoded:"ENLIST" },
+  { time:"22:14", raw:"All.. channels.. —clear.. no.. anomaly.—. Logged.", decoded:"SILENT" },
+  { time:"22:19", raw:"Inland.. nets..— offline.— Routing.. via.. primary.", decoded:"INLETS" },
+  { time:"22:31", raw:"Final.. log—..— Experiment.. date:.. October.—. Year:.. 1972.", decoded:"OCTOBER" },
 ];
+function P1({ wrong, locked, onSolve }) {
+  const [open, setOpen] = useState(null);
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
 
-function Puzzle1({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [revealedBars, setRevealedBars] = useState<Record<number, boolean>>({});
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const bars = [
-    { id:0, reveal:null }, { id:1, reveal:"XIV" }, { id:2, reveal:null },
-    { id:3, reveal:null }, { id:4, reveal:"X" }, { id:5, reveal:null },
-    { id:6, reveal:null }, { id:7, reveal:null }, { id:8, reveal:null },
-    { id:9, reveal:null }, { id:10, reveal:null }, { id:11, reveal:null },
-  ];
-
-  const VALID = ["14-oct-1972","14 oct 1972","14 october 1972","oct 14 1972","14/10/1972"];
-
-  function toggle(id: number) { setRevealedBars(r => ({ ...r, [id]: !r[id] })); }
-
-  function submit(e: React.FormEvent) {
+  function submit(e) {
     e.preventDefault();
-    const clean = input.trim().toLowerCase().replace(/[,\.]/g,"");
-    if (VALID.includes(clean)) {
-      setStatus({ ok:true, msg:"Date verified against the master index." });
-      setTimeout(() => onSolve("date","14 October 1972"), 500);
+    if (locked) return;
+    const c = inp.trim().toLowerCase();
+    if (["october", "14 october 1972", "14-oct-1972"].includes(c)) {
+      setSt({ ok: true, msg: "Confirmed — OCTOBER is the non-anagram. Transmission date verified." });
+      setTimeout(onSolve, 700);
     } else {
-      setStatus({ ok:false, msg:"Format rejected or date incorrect. Check: DD-MON-YYYY." });
+      setSt({ ok: false, msg: "Not quite. Check which decoded word uses a completely different set of letters from the others." });
+      wrong();
     }
   }
 
-  return (
-    <PuzzleFrame index={1} title="The Redacted Article"
-      prompt="The clipping is almost entirely blacked out. Somewhere in those bars, the day is encoded in Roman numerals. The month is never stated — only implied. Recover the full date of the final experiment in DD-MON-YYYY format."
-      status={status} hints={P1_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <p className="bd-doc-text">The final experiment took place in <strong>1972</strong>. The following passage was redacted at source. Hover each bar — some contain encoded fragments.</p>
-      <p className="bd-doc-text bd-redacted-line">
-        {bars.map(b => (
-          <span key={b.id} className={`bd-bar ${revealedBars[b.id]?"is-lifted":""}`}
-            onClick={() => toggle(b.id)} onMouseEnter={() => toggle(b.id)} onMouseLeave={() => toggle(b.id)}
-            role="button" tabIndex={0}>
-            {revealedBars[b.id] ? (b.reveal || "—") : "\u00A0\u00A0\u00A0\u00A0\u00A0"}
-          </span>
-        ))}
-      </p>
-      <div className="bd-caption">Fig. 3 — Corridor photograph. Annotated: "Taken three weeks after the autumn equinox, before final shutdown."</div>
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="DD-MON-YYYY" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 2 — THE MISSING REPORT (HARD)
-   Answer: Report_04
-   Mechanic: references now use non-obvious language.
-   Each report gives a *coded* offset, not plain arithmetic.
-   ══════════════════════════════════════════════ */
-const P2_HINTS = [
-  "Each report's reference is relative to its own file number. 'Three entries after this one' means add 3 to the current report number.",
-  "All six surviving reports point to the same missing file when you do the arithmetic correctly. They all converge on the same number.",
-  "The target is Report_04. Now confirm it by checking the deleted-files folder hidden at the very bottom of the page.",
-];
-
-function Puzzle2({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [open, setOpen] = useState<string | null>(null);
-  const [deletedOpen, setDeletedOpen] = useState(false);
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const reports = [
-    { id:"01", text:"The anomaly documented three entries beyond this filing precedes all subsequent analysis." },
-    { id:"02", text:"Consult the entry situated two positions forward in the sequential index." },
-    { id:"03", text:"The file immediately following this one in chronology was the last filed before the incident." },
-    { id:"05", text:"This report continues work initiated in the entry logged one position prior to this filing." },
-    { id:"06", text:"The findings here were first established two entries behind the current reference point." },
-    { id:"07", text:"The subject roster in this file mirrors one compiled three entries earlier in the record." },
-  ];
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const c = input.trim().toLowerCase().replace(/report_?/g,"").replace(/\s/g,"");
-    if (["04","4","0004"].includes(c)) {
-      setStatus({ ok:true, msg:"Report_04 restored to the index." });
-      setTimeout(() => onSolve("caseNumber","04"), 500);
-    } else setStatus({ ok:false, msg:"That file number does not resolve the discrepancy." });
-  }
-
-  return (
-    <PuzzleFrame index={2} title="The Missing Report"
-      prompt="Six reports survive. Each one points — in deliberately obscured language — to a seventh file the index pretends never existed. Open each report, decode the reference, and name the missing file number."
-      status={status} hints={P2_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-report-grid">
-        {reports.map(r => (
-          <button key={r.id} className={`bd-report-card ${open===r.id?"is-open":""}`} onClick={() => setOpen(open===r.id?null:r.id)}>
-            <div className="bd-report-id">Report_{r.id}.pdf</div>
-            {open===r.id && <div className="bd-report-text">{r.text}</div>}
-          </button>
-        ))}
-      </div>
-      <div className="bd-deleted-zone">
-        <span className={`bd-deleted-link ${deletedOpen?"is-open":""}`} onClick={() => setDeletedOpen(v=>!v)}>deleted files</span>
-        {deletedOpen && <div className="bd-recovered-box">RECOVERED: Report_04.pdf — "The anomaly all prior accounts converge upon."</div>}
-      </div>
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="Which report is missing?" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 3 — THE CABINET PASSWORD (HARD)
-   Answer: NULL
-   Mechanic: Vigenère cipher on a short ciphertext.
-   Key = "DECK". Ciphertext = "QYXP" → plaintext "NULL"
-   Show cipher grid partially; player must decode manually.
-   ══════════════════════════════════════════════ */
-const P3_HINTS = [
-  "This is a Vigenère cipher. To decode letter by letter: find the key letter's row, then scan across to find the ciphertext letter — the column header is the plaintext.",
-  "The key is DECK. First letter: key D, cipher Q → count back from Q by D's position (4) → M? No — use the standard Vigenère table. D=3, Q=16, 16-3=13 → N. Try the rest.",
-  "The four decoded letters are N, U, L, L. The word is NULL — the name this archive uses for the project.",
-];
-
-// Vigenère encode("NULL","DECK") = Q,Y,X,P
-const VIGENERE_PAIRS = [
-  { key:"D", cipher:"Q", plain:"N" },
-  { key:"E", cipher:"Y", plain:"U" },
-  { key:"C", cipher:"X", plain:"L" },
-  { key:"K", cipher:"P", plain:"L" },
-];
-
-function Puzzle3({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [decoded, setDecoded] = useState<string[]>(["","","",""]);
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [showTable, setShowTable] = useState(false);
-
-  function setLetter(i: number, v: string) {
-    const d = [...decoded];
-    d[i] = v.toUpperCase().slice(-1);
-    setDecoded(d);
-  }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (input.trim().toUpperCase() === "NULL") {
-      setStatus({ ok:true, msg:"Cabinet lock disengaged." });
-      setTimeout(() => onSolve("project","NULL"), 500);
-    } else setStatus({ ok:false, msg:"Incorrect decryption. Verify your Vigenère calculation." });
-  }
-
-  // partial Vigenère table rows for D,E,C,K only
-  const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-  const tableRows = ["D","E","C","K"].map(k => {
-    const offset = k.charCodeAt(0) - 65;
-    return { key: k, row: ALPHABET.map((_,i) => ALPHABET[(i + offset) % 26]) };
-  });
-
-  return (
-    <PuzzleFrame index={3} title="The Cabinet Password"
-      prompt="A sticky note was found inside the cabinet lock mechanism. It contains a Vigenère-encrypted word and the key used to encrypt it. Decode it letter by letter using the cipher table."
-      status={status} hints={P3_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-
-      <div className="bd-cipher-note">
-        <div className="bd-cipher-row"><span className="bd-cipher-label">KEY:</span> <span className="bd-cipher-val">D &nbsp; E &nbsp; C &nbsp; K</span></div>
-        <div className="bd-cipher-row"><span className="bd-cipher-label">CIPHER:</span> <span className="bd-cipher-val">Q &nbsp; Y &nbsp; X &nbsp; P</span></div>
-        <div className="bd-cipher-row"><span className="bd-cipher-label">PLAIN:</span>
-          <span className="bd-cipher-inputs">
-            {decoded.map((d,i) => (
-              <input key={i} className="bd-cipher-cell" maxLength={1}
-                value={d} onChange={e => setLetter(i, e.target.value)} placeholder="?" />
-            ))}
-          </span>
+  return (<>
+    <p className="pz-doc">Six transmissions from the final night. The morse embedded in the punctuation has already been decoded below. Click any entry to reveal its decoded word. Five decoded words are perfect anagrams of each other. One is not — and it contains the date.</p>
+    <div className="p1-log">
+      {P1_LINES.map((l, i) => (
+        <div key={i} className={`p1-entry ${open === i ? "open" : ""}`} onClick={() => setOpen(open === i ? null : i)}>
+          <span className="p1-time">[{l.time}]</span>
+          <span className="p1-raw">{l.raw}</span>
+          {open === i && <div className="p1-dec">DECODED: {l.decoded}</div>}
         </div>
-      </div>
+      ))}
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="The odd word out (or full date)" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
 
-      <button className="bd-link-btn" onClick={() => setShowTable(v=>!v)}>
-        {showTable ? "HIDE CIPHER TABLE" : "SHOW VIGENÈRE TABLE (key rows only)"}
-      </button>
-      {showTable && (
-        <div className="bd-vigenere-table">
-          <div className="bd-vt-row bd-vt-header">
-            <span className="bd-vt-key-cell">KEY</span>
-            {ALPHABET.map(a => <span key={a} className="bd-vt-cell bd-vt-head">{a}</span>)}
+const STAFF = [
+  {id:1,  name:"Dr. Eleanor Marsh", dept:"Neuroscience",   clr:"B", entry:"22:05", exit:"06:10", flag:false},
+  {id:2,  name:"K. Osei",           dept:"Engineering",    clr:"A", entry:"21:50", exit:"05:40", flag:false},
+  {id:3,  name:"Dr. Lena Vance",    dept:"Psychology",     clr:"C", entry:"22:00", exit:"04:00", flag:false},
+  {id:4,  name:"E. Hartley",        dept:"Security",       clr:"A", entry:"21:30", exit:"21:15", flag:true},  // exit before entry
+  {id:5,  name:"T. Nakamura",       dept:"Chemistry",      clr:"B", entry:"22:10", exit:"05:55", flag:false},
+  {id:6,  name:"Dr. K. Adeyemi",    dept:"Neuroscience",   clr:"D", entry:"21:45", exit:"04:30", flag:true},  // Neuroscience needs min C; D is too low
+  {id:7,  name:"R. Okafor",         dept:"Logistics",      clr:"A", entry:"22:20", exit:"06:00", flag:false},
+  {id:8,  name:"Dr. F. Solis",      dept:"Physics",        clr:"B", entry:"22:00", exit:"05:30", flag:false},
+  {id:9,  name:"4. Brennan",        dept:"Administration", clr:"C", entry:"22:15", exit:"05:45", flag:true},  // numeric char in name field
+  {id:10, name:"M. Johansson",      dept:"Security",       clr:"A", entry:"21:55", exit:"05:50", flag:false},
+  {id:11, name:"Dr. P. Osei",       dept:"Chemistry",      clr:"B", entry:"22:05", exit:"04:45", flag:false},
+  {id:12, name:"A. Whitmore",       dept:"Engineering",    clr:"A", entry:"22:00", exit:"05:20", flag:false},
+];
+function P2({ wrong, locked, onSolve }) {
+  const [sel, setSel] = useState([]);
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
+
+  function toggle(id) { setSel(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    if (inp.trim().toUpperCase().replace(/\s/g, "") === "EK4") {
+      setSt({ ok: true, msg: "Three contradictions confirmed. Code EK4 verified." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Incorrect. Order matters — read initials as they appear in the ledger, top to bottom." });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">Three entries have been tampered with — impossible timestamps, invalid clearance levels, or protocol violations in the name field. Click rows to flag them. The first character of each contradicted entry, in ledger order, gives your code. Clearance scale: A=highest, D=lowest. Neuroscience minimum: C.</p>
+    <div className="p2-tbl">
+      <div className="p2-hd"><span>#</span><span>Name</span><span>Dept</span><span>Clr</span><span>In</span><span>Out</span><span>⚑</span></div>
+      {STAFF.map(s => (
+        <div key={s.id} className={`p2-row ${sel.includes(s.id) ? "flagged" : ""}`} onClick={() => toggle(s.id)}>
+          <span>{s.id}</span><span>{s.name}</span><span>{s.dept}</span><span>{s.clr}</span>
+          <span>{s.entry}</span><span>{s.exit}</span><span>{sel.includes(s.id) ? "⚑" : "○"}</span>
+        </div>
+      ))}
+    </div>
+    {sel.length > 0 && (
+      <div className="p2-sel">Flagged: {sel.map(id => STAFF.find(s => s.id === id)?.name).join(", ")}</div>
+    )}
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="3-character code" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
+
+// FIX: P3 compound id:2 formula "B" (Boron alone) and id:6 "H" (Hydrogen alone)
+// are single-atom "compounds" — valid for puzzle purposes as atomic number lookups.
+// No code change needed; documenting intent.
+const P3_COMPOUNDS = [
+  {id:1, formula:"LiH",  breakdown:"Li(3) + H(1)",     sum:4,   letter:"D", impossible:false},
+  {id:2, formula:"B",    breakdown:"B(5)",              sum:5,   letter:"E", impossible:false},
+  {id:3, formula:"XeF₈", breakdown:"Xe(54) + F(9)×8",  sum:126, letter:"—", impossible:true},
+  {id:4, formula:"Mg",   breakdown:"Mg(12)",            sum:12,  letter:"L", impossible:false},
+  {id:5, formula:"Ca",   breakdown:"Ca(20)",            sum:20,  letter:"T", impossible:false},
+  {id:6, formula:"H",    breakdown:"H(1)",              sum:1,   letter:"A", impossible:false},
+];
+function P3({ wrong, locked, onSolve }) {
+  const [rev, setRev] = useState({});
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    if (inp.trim().toUpperCase() === "DELTA") {
+      setSt({ ok: true, msg: "Codename confirmed — DELTA." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Not quite. Skip the impossible compound, then read the remaining five letters in written order." });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">Six compounds on the blackboard. Sum the atomic numbers for each. Map each sum to a letter (1=A, 26=Z). One compound is chemically impossible — noble gases cannot form bonds. Discard it. The remaining five, in written order, spell a word.</p>
+    <div style={{fontSize:10,color:"#6b5e3a",marginBottom:6}}>Atomic ref: H=1, He=2, Li=3, Be=4, B=5, C=6, N=7, O=8, F=9, Ne=10, Na=11, Mg=12, Ca=20, Xe=54</div>
+    <div className="p3-grid">
+      {P3_COMPOUNDS.map(c => (
+        <div key={c.id} className={`p3-c ${rev[c.id] ? "open" : ""} ${c.impossible ? "imp" : ""}`} onClick={() => setRev(r => ({ ...r, [c.id]: !r[c.id] }))}>
+          <div className="p3-f">{c.formula}</div>
+          {rev[c.id] && (
+            <div className="p3-det">
+              <div className="p3-bk">{c.breakdown}</div>
+              <div className="p3-sm">Σ = {c.sum}</div>
+              {c.impossible
+                ? <div className="p3-no">⚠ IMPOSSIBLE — discard</div>
+                : <div className="p3-ltr">→ {c.letter}</div>
+              }
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="Five-letter word" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
+
+// THE_GRID uses a mixed (number | string)[][] type — "?" marks the corrupted cell.
+// This is intentional; the className check `cell === "?"` correctly identifies it.
+const THE_GRID = [
+  [7,3,5,2,8,1,6,4],[2,9,4,7,3,6,1,8],[6,1,8,3,9,4,"?",2],[4,7,2,9,1,8,3,6],
+  [8,3,6,1,7,2,9,4],[1,5,9,4,2,7,8,3],[5,2,3,8,6,9,4,7],[3,8,7,6,4,3,2,9],
+];
+const SL_DEFS = [
+  {id:1, label:"ALPHA", path:[[0,0],[1,1],[2,2],[3,3],[4,4],[5,5],[6,6],[7,7]], digit:7},
+  {id:2, label:"BETA",  path:[[0,7],[1,6],[2,5],[3,4],[4,3],[5,2],[6,1],[7,0]], digit:2},
+  {id:3, label:"GAMMA", path:[[0,2],[1,3],[2,6],[3,5],[4,4],[5,3],[6,2],[7,1]], digit:9, corruptAt:[2,6]},
+  {id:4, label:"DELTA", path:[[0,5],[1,4],[2,3],[3,2],[4,1],[5,0],[6,7],[7,6]], digit:4},
+];
+function P4({ wrong, locked, onSolve }) {
+  const [showGrid, setShowGrid] = useState(false);
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    const c = inp.trim().replace(/\s/g, "");
+    if (c === "7294" || c === "7-2-9-4") {
+      setSt({ ok: true, msg: "PIN confirmed — 7294." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Incorrect. Recover the corrupted cell first using the mirror rule, then average all four scan lines." });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">Four diagonal scan lines cross an 8×8 grid. Average each line's values (round down) for one digit of a 4-digit PIN. Scan line GAMMA has a corrupted cell marked "?". Recover it: the mirror of cell (row, col) under 180° rotation is cell (7−row, 7−col). That mirror holds the missing value.</p>
+    <button className="link-btn" onClick={() => setShowGrid(v => !v)}>{showGrid ? "▲ HIDE GRID" : "▼ SHOW FREQUENCY GRID"}</button>
+    {showGrid && (
+      <div className="p4-gw">
+        <div className="p4-hrow">
+          <span className="p4-rc">r\c</span>
+          {[0,1,2,3,4,5,6,7].map(c => <span key={c} className="p4-ch">{c}</span>)}
+        </div>
+        {THE_GRID.map((row, r) => (
+          <div key={r} className="p4-row2">
+            <span className="p4-rh">{r}</span>
+            {row.map((cell, c) => (
+              <span key={c} className={`p4-cell ${cell === "?" ? "cor" : ""}`}>{cell}</span>
+            ))}
           </div>
-          {tableRows.map(r => (
-            <div key={r.key} className="bd-vt-row">
-              <span className="bd-vt-key-cell">{r.key}</span>
-              {r.row.map((c,i) => (
-                <span key={i} className={`bd-vt-cell ${["Q","Y","X","P"].includes(c)?"bd-vt-highlight":""}`}>{c}</span>
+        ))}
+      </div>
+    )}
+    <div className="p4-sl">
+      <div className="p4-sl-hd">SCAN LINE PATHS</div>
+      {SL_DEFS.map(sl => (
+        <div key={sl.id} className="p4-sl-r">
+          <span className="p4-sl-lb">{sl.label}</span>
+          <span className="p4-sl-p">{sl.path.map(([r,c]) => `(${r},${c})`).join(" → ")}</span>
+          {sl.corruptAt && <span className="p4-cor-tag">⚠ ({sl.corruptAt[0]},{sl.corruptAt[1]}) CORRUPT</span>}
+        </div>
+      ))}
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="4-digit PIN" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
+
+const WITNESSES = [
+  {id:"W1", name:"Subject 001", time:"23:00", statements:[
+    {id:"W1a", text:"I entered the cabinet at exactly 22:45.", true:true},
+    {id:"W1b", text:"The cabinet door closed automatically behind me.", true:true},
+    {id:"W1c", text:"I saw Subject 003 leaving the room before I entered — around 22:30.", true:false},
+    {id:"W1d", text:"The space inside had no visible walls or boundaries.", true:true},
+  ]},
+  {id:"W2", name:"Subject 002", time:"23:05", statements:[
+    {id:"W2a", text:"The room felt like standing inside fog with no edges.", true:true},
+    {id:"W2b", text:"I was inside for approximately 40 minutes before the door reopened.", true:false},
+    {id:"W2c", text:"There was a presence. Not human. Not threatening. Only observing.", true:true},
+    {id:"W2d", text:"The word that came to mind was NULL.", true:true},
+  ]},
+  {id:"W3", name:"Subject 003", time:"23:10", statements:[
+    {id:"W3a", text:"I entered at 23:10 as scheduled.", true:true},
+    {id:"W3b", text:"The interior of the cabinet was identical to the anteroom I had just left.", true:false},
+    {id:"W3c", text:"The word ROOM came to me unprompted.", true:true},
+    {id:"W3d", text:"The presence did not interact. It only watched.", true:true},
+  ]},
+  {id:"W4", name:"Subject 004", time:"23:20", statements:[
+    {id:"W4a", text:"I felt no passage of time inside.", true:true},
+    {id:"W4b", text:"The atmosphere was like deep water — pressure without substance.", true:true},
+    {id:"W4c", text:"Dr. Marsh was monitoring from inside the control room when I entered.", true:false},
+    {id:"W4d", text:"I wanted to describe it as THE — a definite, specific, located place.", true:true},
+  ]},
+  {id:"W5", name:"Subject 005", time:"23:30", statements:[
+    {id:"W5a", text:"Before entering I was told the session would last 10 minutes.", true:true},
+    {id:"W5b", text:"I heard a low hum the moment the door sealed.", true:true},
+    {id:"W5c", text:"The session lasted exactly 10 minutes by my own internal count.", true:false},
+    {id:"W5d", text:"The only word I could produce afterward was ROOM, again.", true:true},
+  ]},
+];
+function P5({ wrong, locked, onSolve }) {
+  const [openW, setOpenW] = useState(null);
+  const [flagged, setFlagged] = useState({});
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
+
+  function toggleFlag(wid, sid) { setFlagged(f => ({ ...f, [`${wid}-${sid}`]: !f[`${wid}-${sid}`] })); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    const c = inp.trim().toLowerCase().replace(/\s+/g, " ");
+    if (["the null room", "null room"].includes(c)) {
+      setSt({ ok: true, msg: "Location confirmed — THE NULL ROOM." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Not quite. Find one lie per witness. The key word in each of the first three witnesses' true statements (in witness order) gives you the answer." });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">Five debriefings. Exactly one lie per witness — find it by contradiction with other testimonies or with logged records. Flag the lie in each block. The key word from the true statements of witnesses 1, 2, and 3 (in that order) assembles the location name.</p>
+    <div className="p5-ws">
+      {WITNESSES.map(w => (
+        <div key={w.id} className="p5-w">
+          <button className="p5-wh" onClick={() => setOpenW(openW === w.id ? null : w.id)}>
+            <span className="p5-wid">{w.name}</span>
+            <span className="p5-wt">Filed {w.time}</span>
+            <span>{openW === w.id ? "▲" : "▼"}</span>
+          </button>
+          {openW === w.id && (
+            <div className="p5-stmts">
+              {w.statements.map(s => (
+                <div key={s.id} className={`p5-s ${flagged[`${w.id}-${s.id}`] ? "fl" : ""}`} onClick={() => toggleFlag(w.id, s.id)}>
+                  <span className="p5-fl">{flagged[`${w.id}-${s.id}`] ? "⚑ LIE" : "○"}</span>
+                  <span className="p5-st">{s.text}</span>
+                </div>
               ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
-
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="Enter decoded password" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
+      ))}
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="Location (up to 3 words)" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
 }
 
-/* ══════════════════════════════════════════════
-   PUZZLE 4 — THE RESTRICTED TERMINAL (HARD)
-   Answer: Level IX
-   Mechanic: Binary-encoded stamp numbers. Player must
-   convert binary to decimal → pick highest valid = 9.
-   ══════════════════════════════════════════════ */
-const P4_HINTS = [
-  "Each stamp contains a binary number. Convert each from binary to decimal — that's the access level it describes.",
-  "Binary: 1001 = 8+0+0+1 = 9. That's the highest level in the set. One stamp is a forgery — it contains an error bit.",
-  "The correct level is IX (nine). Three stamps confirm it. One stamp reads 1000 (decimal 8) — that's the forgery. Submit 'Level IX'.",
-];
-
-function Puzzle4({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [openManual, setOpenManual] = useState(false);
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  const stamps = [
-    { id:1, text:"ARCHIVE DEPTH: 1001", forged:false },
-    { id:2, text:"ARCHIVE DEPTH: 1001", forged:false },
-    { id:3, text:"ARCHIVE DEPTH: 1000", forged:true },
-    { id:4, text:"ARCHIVE DEPTH: 1001", forged:false },
-  ];
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const c = input.trim().toLowerCase().replace("level","").trim();
-    if (["ix","9"].includes(c) || input.trim().toLowerCase() === "level ix") {
-      setStatus({ ok:true, msg:"Terminal accepts clearance." });
-      setTimeout(() => onSolve("clearance","IX"), 500);
-    } else setStatus({ ok:false, msg:"Access denied. Decode the binary stamps correctly." });
-  }
-
-  return (
-    <PuzzleFrame index={4} title="The Restricted Terminal"
-      prompt="ACCESS DENIED. Four archived stamps carry binary-encoded access levels. Three agree on the correct level — one is a deliberate forgery. Decode the binary numbers, identify the consensus, and enter the access level."
-      status={status} hints={P4_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-stamp-grid">
-        {stamps.map(s => (
-          <div key={s.id} className={`bd-depth-stamp ${s.forged?"bd-depth-suspect":""}`}>{s.text}</div>
-        ))}
-      </div>
-      <button className="bd-link-btn" onClick={() => setOpenManual(v=>!v)}>
-        {openManual ? "CLOSE CONVERSION REFERENCE" : "OPEN BINARY CONVERSION REFERENCE"}
-      </button>
-      {openManual && (
-        <div className="bd-manual">
-          <div className="bd-manual-row"><span>0001</span><span>= Level I</span></div>
-          <div className="bd-manual-row"><span>0010</span><span>= Level II</span></div>
-          <div className="bd-manual-row"><span>0011</span><span>= Level III</span></div>
-          <div className="bd-manual-row"><span>0100</span><span>= Level IV</span></div>
-          <div className="bd-manual-row"><span>0101</span><span>= Level V</span></div>
-          <div className="bd-manual-row"><span>0110</span><span>= Level VI</span></div>
-          <div className="bd-manual-row"><span>0111</span><span>= Level VII</span></div>
-          <div className="bd-manual-row"><span>1000</span><span>= Level VIII</span></div>
-          <div className="bd-manual-row bd-manual-missing"><span>1001</span><span>[NO ENTRY ON FILE]</span></div>
-        </div>
-      )}
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="Enter access level (e.g. Level IX)" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 5 — THE FACILITY MAP (HARD)
-   Answer: Observation Chamber
-   Mechanic: Four coordinates map to grid positions.
-   Only one set points inside the unlabeled room on the grid.
-   ══════════════════════════════════════════════ */
-const P5_HINTS = [
-  "The grid uses (Row, Column) coordinates starting from top-left = (1,1). Each excerpt contains a coordinate pair — only one falls in the unlabeled cell.",
-  "The unlabeled room is at position (2,3) on the 3×3 grid. Only one excerpt's coordinate matches: 'grid reference 2-3'.",
-  "The room is the Observation Chamber. Fragments 1 and 3 both confirm this name indirectly. Submit exactly: Observation Chamber",
-];
-
-function Puzzle5({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [openExcerpt, setOpenExcerpt] = useState<number | null>(null);
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  // 3×3 grid. Cell (2,3) = unknown
-  const grid = [
-    ["Laboratory A","Control Room","Storage"],
-    ["Laboratory B","Exit","?????"],
-    ["Corridor N","Corridor S","Sublevel Access"],
-  ];
-
-  const excerpts = [
-    { id:1, coord:"(1,2)", text:"Grid ref 1-2: Control room power restored at 0410 on the final night." },
-    { id:2, coord:"(3,1)", text:"Grid ref 3-1: Northern corridor sealed after the lockdown order was issued." },
-    { id:3, coord:"(2,3)", text:"Grid ref 2-3: Subject transport logs place the final session in the unlabeled eastern room." },
-    { id:4, coord:"(3,3)", text:"Grid ref 3-3: Sublevel access hatch welded shut post-incident — never reopened." },
-  ];
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (input.trim().toLowerCase() === "observation chamber") {
-      setStatus({ ok:true, msg:"Blueprint updated." });
-      setTimeout(() => onSolve("room","Observation Chamber"), 500);
-    } else setStatus({ ok:false, msg:"Unrecognized room name." });
-  }
-
-  return (
-    <PuzzleFrame index={5} title="The Facility Map"
-      prompt="The blueprint has a 3×3 grid. One cell is unlabeled. Each excerpt contains a grid coordinate (Row, Column). Find which coordinate falls in the unlabeled cell — the excerpts that reference it name the room."
-      status={status} hints={P5_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-blueprint-grid">
-        {grid.map((row,r) => row.map((cell,c) => (
-          <div key={`${r}-${c}`} className={`bd-room ${cell==="?????"?"bd-room-unknown":""}`}>
-            <span className="bd-room-coord">({r+1},{c+1})</span>
-            <span>{cell}</span>
-          </div>
-        )))}
-      </div>
-      <div className="bd-excerpt-list">
-        {excerpts.map(ex => (
-          <button key={ex.id} className={`bd-excerpt ${openExcerpt===ex.id?"is-open":""}`} onClick={() => setOpenExcerpt(openExcerpt===ex.id?null:ex.id)}>
-            FRAGMENT {ex.id} — COORD {ex.coord}
-            {openExcerpt===ex.id && <div className="bd-excerpt-text">{ex.text}</div>}
-          </button>
-        ))}
-      </div>
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="Name the unlabeled room" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 6 — THE RESEARCH NOTES (HARD)
-   Answer: Banana
-   Mechanic: Search returns *weighted* scores for each word.
-   Only Banana scores 0. But the UI gives misleading context scores
-   for other words making players second-guess.
-   ══════════════════════════════════════════════ */
-const P6_HINTS = [
-  "Some words return scores that look like 'hits' — but read the result carefully. A score of 0 means truly zero references. No entry. No archive record at all.",
-  "Search every word. Five of them return a number greater than zero. Only one returns exactly zero — that's your answer.",
-  "The odd-one-out is Banana. It has zero archive references. Everything else is part of the investigation. Submit 'Banana'.",
-];
-
-const SEARCH_INDEX = {
-  memory:14, reality:9, perception:11, identity:6, consciousness:4, banana:0,
-  // decoys
-  shadow:3, mirror:7, void:2, echo:5,
+const ARCHIVE = {
+  "A-1": {letter:"N", next:"C-3", text:"Initial access log — cross-reference C-3 for continuation."},
+  "C-3": {letter:"U", next:"B-7", text:"Secondary cross-file. See B-7."},
+  "B-7": {letter:"L", next:"F-2", text:"Facility sub-level reference. Continue at F-2."},
+  "F-2": {letter:"L", next:"D-5", text:"Frequency monitor log. Anomaly records at D-5."},
+  "D-5": {letter:"G", next:"E-4", text:"DELTA sub-index. Forward to E-4."},
+  "E-4": {letter:"A", next:"G-1", text:"Experiment archive node. See G-1."},
+  "G-1": {letter:"T", next:"H-6", text:"Gate access record. Final node at H-6."},
+  "H-6": {letter:"E", next:null,  text:"Terminal node. No further references. Chain complete."},
+  "D-9": {letter:"X", next:"D-9", text:"[CORRUPTED] — Self-referential. This entry references itself."},
+  "B-2": {letter:"Z", next:"C-3", text:"Returns to C-3 — you've already been there. Dead end."},
+  "F-8": {letter:"Q", next:"F-2", text:"Returns to F-2 — already visited. Dead end branch."},
+  "G-9": {letter:"W", next:"G-9", text:"[LOOP] — References itself. Dead end."},
 };
-const ALL_NOTES = ["Memory","Reality","Perception","Identity","Consciousness","Banana"];
+function P6({ wrong, locked, onSolve }) {
+  const [visited, setVisited] = useState([]);
+  const [letters, setLetters] = useState([]);
+  const [cur, setCur] = useState("A-1");
+  const [inp, setInp] = useState("");
+  const [manual, setManual] = useState("");
+  const [st, setSt] = useState(null);
 
-function Puzzle6({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ q: string; entry: string }[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
+  function visit(code) {
+    const e = ARCHIVE[code];
+    if (!e) { setSt({ ok: false, msg: `No entry: ${code}` }); return; }
+    setVisited(v => [...v, code]);
+    setLetters(l => [...l, e.letter]);
+    setCur(e.next || "END");
+  }
 
-  function runSearch(e: React.FormEvent) {
+  function jumpTo(e) {
     e.preventDefault();
-    const key = query.trim().toLowerCase();
-    const count = SEARCH_INDEX[key as keyof typeof SEARCH_INDEX];
-    const entry = count === undefined
-      ? `"${query}" — no index entry found.`
-      : count === 0
-        ? `"${query}" — 0 references found. No archive record.`
-        : `"${query}" — ${count} reference${count===1?"":"s"} found across ${Math.ceil(count/2)} documents.`;
-    setResults(r => [{ q:query, entry }, ...r].slice(0,8));
+    const c = manual.trim().toUpperCase();
+    if (!ARCHIVE[c]) { setSt({ ok: false, msg: `No entry: ${c}` }); return; }
+    visit(c);
+    setManual("");
   }
 
-  function confirm() {
-    if (selected === "Banana") {
-      setStatus({ ok:true, msg:"Note discarded. It never belonged here." });
-      setTimeout(() => onSolve("oddNote","Banana"), 500);
-    } else setStatus({ ok:false, msg:"That word has real references in the archive." });
+  function reset() { setVisited([]); setLetters([]); setCur("A-1"); setSt(null); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    const c = inp.trim().toUpperCase().replace(/[-\s]/g, "");
+    if (c === "NULLGATE") {
+      setSt({ ok: true, msg: "Project name confirmed — NULL-GATE." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Incorrect. The valid chain has exactly 8 stops. Dead ends loop — if you've revisited a node, backtrack." });
+      wrong();
+    }
   }
 
-  return (
-    <PuzzleFrame index={6} title="The Research Notes"
-      prompt="Six handwritten notes were pinned to the wall. Search the archive index for each one. The word with zero archive references doesn't belong here. Identify and confirm it."
-      status={status} hints={P6_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-notes-grid">
-        {ALL_NOTES.map(n => (
-          <button key={n} className={`bd-note ${selected===n?"is-selected":""}`} onClick={() => setSelected(n)}>{n}</button>
-        ))}
-      </div>
-      <form className="bd-input-row" onSubmit={runSearch}>
-        <input className="bd-input" placeholder="Search archive index..." value={query} onChange={e => setQuery(e.target.value)} />
-        <button className="bd-btn bd-btn-ghost" type="submit"><Search size={13}/> SEARCH</button>
+  const entry = cur && cur !== "END" ? ARCHIVE[cur] : null;
+
+  return (<>
+    <p className="pz-doc">Navigate the archive index from A-1. Each valid entry reveals one letter and points forward. Dead ends loop or self-reference — if an entry sends you somewhere already visited, it's a dead end. Collect 8 letters in chain order.</p>
+    <div className="p6-term">
+      <div className="p6-path">PATH: {visited.length === 0 ? "START AT A-1" : visited.join(" → ")}{cur === "END" ? " → [END]" : ""}</div>
+      <div className="p6-letters">LETTERS: [{letters.join("")}]</div>
+      {cur !== "END" && entry && (
+        <div className="p6-cur">
+          <div className="p6-nd">CURRENT: {visited[visited.length - 1] || "A-1"} — letter "{entry.letter}"</div>
+          <div className="p6-et">{entry.text}</div>
+          {entry.next
+            ? <button className="p6-fl" onClick={() => visit(entry.next)} disabled={locked}>FOLLOW → {entry.next}</button>
+            : <div className="p6-end">Terminal node.</div>
+          }
+        </div>
+      )}
+      {cur === "END" && <div className="p6-end">Chain complete. {letters.length} letters collected.</div>}
+      {visited.length === 0 && <button className="p6-fl" onClick={() => visit("A-1")} disabled={locked}>OPEN A-1 →</button>}
+    </div>
+    <div className="p6-man">
+      <span className="p6-manlb">JUMP TO:</span>
+      <form className="row" onSubmit={jumpTo} style={{marginTop:0}}>
+        <input className="inp" style={{width:80,flex:"none"}} placeholder="e.g. D-9" value={manual} onChange={e => setManual(e.target.value)} disabled={locked}/>
+        <button className="btn btn-sm" type="submit" disabled={locked}>GO</button>
+        <button className="btn btn-sm btn-ghost" type="button" onClick={reset}>RESET</button>
       </form>
-      {results.length > 0 && (
-        <div className="bd-search-log">
-          {results.map((r,i) => <div key={i} className="bd-search-result">&gt; {r.entry}</div>)}
-        </div>
-      )}
-      <button className="bd-btn" style={{marginTop:8}} onClick={confirm} disabled={!selected}>
-        CONFIRM "{selected||"..."}" AS THE ODD NOTE
-      </button>
-    </PuzzleFrame>
-  );
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="8-letter project name" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
 }
 
-/* ══════════════════════════════════════════════
-   PUZZLE 7 — THE FOUR CABINETS (HARD)
-   Answer: Hearts
-   Mechanic: 4 testimonies all use ambiguous language.
-   Player must extract the underlying psychological trait
-   and match it against a reference table of suit→trait mappings.
-   ══════════════════════════════════════════════ */
-const P7_HINTS = [
-  "The psychology report maps each suit to a core trait: Spades = Grief, Diamonds = Greed, Clubs = Ambition. The remaining trait is Emotion — which suit is missing from that list?",
-  "Hearts is mapped to Emotion. Only one testimony explicitly uses the word 'emotion'. The others imply their trait without naming it.",
-  "The Hearts testimony says: '...the last conversation I had with my mother — the emotion in that moment.' That is the only explicit trait-name. Select Hearts.",
+const ROOMS = [
+  {id:1,  label:"Wet Lab",           adj:[2,5]},
+  {id:2,  label:"Electrical Vault",  adj:[1,3,6]},
+  {id:3,  label:"Server Room",       adj:[2,4]},
+  {id:4,  label:"High-Voltage Bay",  adj:[3,5,8]},
+  {id:5,  label:"Chemical Store",    adj:[1,4,6]},
+  {id:6,  label:"Observation Deck",  adj:[2,5,7]},
+  {id:7,  label:"Cabinet Chamber",   adj:[6,8,9]},
+  {id:8,  label:"Cryogenic Store",   adj:[4,7,9]},
+  {id:9,  label:"Medical Bay",       adj:[7,8,10]},
+  {id:10, label:"Corridor",          adj:[9,11,12]},
+  {id:11, label:"Pressure Chamber",  adj:[10,12]},
+  {id:12, label:"Director's Office", adj:[10,11]},
 ];
+const LEGEND_GIVEN = {1:"W",2:"Z",3:"T",4:"F",5:"H",6:"E",7:"R",8:"M",9:"S",10:"O",11:"I",12:"N"};
+const HIGHLIGHTED = [1,2,3,4,5,6,7];
+const VIOLATIONS = [[1,2],[4,8],[11,12]];
+function P7({ wrong, locked, onSolve }) {
+  // FIX: corr keys stored as numbers; JS coerces to strings in object lookups — harmless,
+  // but initialising as strings makes intent explicit and avoids any linting noise.
+  const [flagV, setFlagV] = useState([]);
+  const [corr, setCorr] = useState({"2":"","4":"","8":""});
+  const [show, setShow] = useState(false);
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
 
-function Puzzle7({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [open, setOpen] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-  const [showRef, setShowRef] = useState(false);
+  function toggleV(pair) { const k = pair.join("-"); setFlagV(f => f.includes(k) ? f.filter(x => x !== k) : [...f, k]); }
+  function setC(r, v) { setCorr(c => ({ ...c, [String(r)]: v.toUpperCase().slice(0,1) })); }
 
-  const cabinets = [
-    { suit:"♠", label:"Spades",   text:"I chose the cabinet that reminded me of the night I buried my brother. The grief I'd swallowed for years came back in that room — but I didn't name it, not even to myself." },
-    { suit:"♥", label:"Hearts",   text:"I chose the cabinet that confronted me with raw emotion — the last conversation I had with my mother, the feeling in that moment. I hadn't felt that in years." },
-    { suit:"♦", label:"Diamonds", text:"I chose the cabinet that showed me everything I'd sacrificed to get here — the house, the car, the title. A life built around accumulation." },
-    { suit:"♣", label:"Clubs",    text:"I chose the cabinet that reflected my drive — the early mornings, the ruthlessness it took to climb. I saw the version of myself I'd decided to become at nineteen." },
-  ];
-
-  function choose(label: string) {
-    if (label === "Hearts") {
-      setStatus({ ok:true, msg:"Testimony matched. Cabinet identified." });
-      setTimeout(() => onSolve("cabinet","HEARTS"), 500);
-    } else setStatus({ ok:false, msg:"That testimony implies a different trait. Refer to the psychology report reference table." });
-  }
-
-  return (
-    <PuzzleFrame index={7} title="The Four Cabinets"
-      prompt="Four witnesses described their cabinet choice. Each testimony maps to a psychological trait. The psychology report was looking for one specific trait named outright — not implied. Cross-reference the trait table and identify the correct cabinet."
-      status={status} hints={P7_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <button className="bd-link-btn" onClick={() => setShowRef(v=>!v)}>
-        {showRef?"CLOSE PSYCHOLOGY REFERENCE":"OPEN PSYCHOLOGY REPORT EXTRACT"}
-      </button>
-      {showRef && (
-        <div className="bd-manual" style={{marginBottom:8}}>
-          <div className="bd-manual-row"><span>♠ Spades</span><span>Core trait: [REDACTED]</span></div>
-          <div className="bd-manual-row"><span>♥ Hearts</span><span>Core trait: [REDACTED]</span></div>
-          <div className="bd-manual-row"><span>♦ Diamonds</span><span>Core trait: [REDACTED]</span></div>
-          <div className="bd-manual-row"><span>♣ Clubs</span><span>Core trait: [REDACTED]</span></div>
-          <p style={{fontSize:9,color:"#4a4332",marginTop:6}}>Cross-reference traits against testimony language to deduce each mapping.</p>
-        </div>
-      )}
-      <div className="bd-cabinet-row">
-        {cabinets.map(c => (
-          <button key={c.label} className={`bd-cabinet ${open===c.label?"is-open":""}`} onClick={() => setOpen(open===c.label?null:c.label)}>
-            <span className="bd-cabinet-suit">{c.suit}</span>{c.label}
-          </button>
-        ))}
-      </div>
-      {open && (
-        <div className="bd-testimony">
-          <p>"{cabinets.find(c => c.label === open)?.text || ""}"</p>
-          <button className="bd-btn" onClick={() => choose(open)}>THIS IS THE ONE</button>
-        </div>
-      )}
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 8 — THE MISSING LOG ENTRY (HARD)
-   Answer: Entry 3
-   Mechanic: Entries are shown shuffled + with misleading timestamps.
-   Player must reconstruct correct chronological order
-   and identify the gap. Metadata is buried in a hex dump.
-   ══════════════════════════════════════════════ */
-const P8_HINTS = [
-  "The entries are not shown in order. Look at the timestamps — sort them chronologically and you'll find a gap between two consecutive numbers.",
-  "The hex dump contains a readable ASCII string near offset 0x0090. Look for the string 'ENTRY_3' or '03' near a checksum mismatch comment.",
-  "The missing entry is Entry 3. It sits between the preparation entry (Entry 2) and the unexpected return entry (Entry 4). Submit '3' or 'Entry 3'.",
-];
-
-function Puzzle8({ onSolve, hintUsed, onUseHint, penaltyTotal }: PuzzleProps) {
-  const [open, setOpen] = useState<number | null>(null);
-  const [showHex, setShowHex] = useState(false);
-  const [input, setInput] = useState("");
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  // Entries shown OUT of order deliberately
-  const entries = [
-    { id:4, ts:"04:17", text:"Subject returned unexpectedly. No record of re-entry on any active monitor." },
-    { id:1, ts:"02:44", text:"Subjects briefed. Equipment calibrated. No anomalies on pre-test checks." },
-    { id:5, ts:"04:52", text:"Facility placed under lockdown. Communications restricted to senior staff only." },
-    { id:2, ts:"03:31", text:"Cabinets opened in sequence. Preparation complete. Cabinet seals confirmed." },
-  ];
-
-  function submit(e: React.FormEvent) {
+  function submit(e) {
     e.preventDefault();
-    const c = input.trim().toLowerCase().replace("entry","").trim();
-    if (["3","03"].includes(c) || input.trim().toLowerCase() === "entry 3") {
-      setStatus({ ok:true, msg:"Entry 3 recovered and restored." });
-      setTimeout(() => onSolve("entry","Entry 3"), 500);
-    } else setStatus({ ok:false, msg:"No such entry. Sort the log by timestamp and find the gap." });
+    if (locked) return;
+    if (inp.trim().toUpperCase() === "WATCHER") {
+      setSt({ ok: true, msg: "Blueprint cipher resolved — WATCHER." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Not correct. Find all three violations, correct those legend entries, then read rooms 1–7 in sequence." });
+      wrong();
+    }
   }
 
-  return (
-    <PuzzleFrame index={8} title="The Missing Log Entry"
-      prompt="The experiment log entries are shown in retrieval order — not chronological. Sort them by timestamp, find the sequential gap, then recover the missing entry number from the hex dump."
-      status={status} hints={P8_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-log-list">
-        {entries.map(e => (
-          <button key={e.id} className={`bd-log-entry ${open===e.id?"is-open":""}`} onClick={() => setOpen(open===e.id?null:e.id)}>
-            <span>Entry {e.id}</span><span className="bd-log-ts">[{e.ts}]</span>
-            {open===e.id && <div className="bd-log-text">{e.text}</div>}
-          </button>
-        ))}
-      </div>
-      <button className="bd-link-btn" onClick={() => setShowHex(v=>!v)}>
-        {showHex ? "CLOSE HEX DUMP" : "INSPECT ARCHIVE HEX DUMP"}
-      </button>
-      {showHex && (
-        <pre className="bd-metadata">{`0000: 45 4e 54 52 59 5f 31 00  2c 00 00 00 4f 4b 0a
-0010: 45 4e 54 52 59 5f 32 00  2c 00 00 00 4f 4b 0a
-0020: -- -- -- -- -- -- -- --  -- -- -- -- -- -- --
-; offset 0x0090: ENTRY_3 checksum=0xDEAD status=MISMATCH
-; partial recovery: "...silence preceded the scream..."
-; backup ref: /null/1972/log_entry_03.bak [corrupt]
-0030: 45 4e 54 52 59 5f 34 00  2c 00 00 00 4f 4b 0a
-0040: 45 4e 54 52 59 5f 35 00  2c 00 00 00 4f 4b 0a`}</pre>
-      )}
-      <form className="bd-input-row" onSubmit={submit}>
-        <input className="bd-input" placeholder="Which entry is missing?" value={input} onChange={e => setInput(e.target.value)} />
-        <button className="bd-btn" type="submit">SUBMIT</button>
-      </form>
-    </PuzzleFrame>
-  );
-}
-
-/* ══════════════════════════════════════════════
-   PUZZLE 9 — FINAL AUTHORIZATION (HARD)
-   Answer: NULL-IX-04-HEARTS
-   Mechanic: 6 fragment options (2 decoys), 4 slots.
-   Decoys: "MERIDIAN" (fake project) and "VII" (fake level).
-   Player must assign correctly from memory/deduction.
-   ══════════════════════════════════════════════ */
-const P9_HINTS = [
-  "You have 6 fragments but only 4 slots. Two fragments are decoys: MERIDIAN is a different project name, and VII is an incorrect level — it appeared in a forged stamp.",
-  "Correct assignments: PROJECT = NULL, CLEARANCE = IX, CASE = 04, CABINET = HEARTS. The decoys MERIDIAN and VII should be left unassigned.",
-  "The final code is NULL-IX-04-HEARTS. Assign each fragment to its category and submit.",
-];
-
-function Puzzle9({ fragments, onSolve, hintUsed, onUseHint, penaltyTotal }: Puzzle9Props) {
-  // 6 options, 2 are decoys
-  const OPTIONS = ["NULL","MERIDIAN","IX","VII","04","HEARTS"];
-  const SLOTS: Record<string, string> = { project:"PROJECT", clearance:"CLEARANCE", caseNumber:"CASE №", cabinet:"CABINET" };
-  const EXPECTED: Record<string, string> = { project:"NULL", clearance:"IX", caseNumber:"04", cabinet:"HEARTS" };
-
-  const [slots, setSlots] = useState<Record<string, string>>({ project:"", clearance:"", caseNumber:"", cabinet:"" });
-  const [status, setStatus] = useState<{ ok: boolean; msg: string } | null>(null);
-
-  function setSlot(key: string, val: string) { setSlots(s => ({ ...s, [key]: val })); }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (Object.keys(EXPECTED).every(k => slots[k] === EXPECTED[k])) {
-      setStatus({ ok:true, msg:"AUTHORIZATION ACCEPTED — ARCHIVE UNLOCKED." });
-      setTimeout(() => onSolve("final","NULL-IX-04-HEARTS"), 800);
-    } else setStatus({ ok:false, msg:"Sequence rejected. One or more assignments are incorrect. Two fragments are decoys." });
-  }
-
-  const code = ["project","clearance","caseNumber","cabinet"].map(k => slots[k]||"____").join("-");
-
-  return (
-    <PuzzleFrame index={9} title="Final Authorization"
-      prompt="Six fragments recovered. Four slots to fill. Two fragments are deliberate decoys planted in the archive. Assign each real fragment to its correct category, leave the decoys unassigned, and submit the final authorization code."
-      status={status} hints={P9_HINTS} hintUsed={hintUsed} onUseHint={onUseHint} penaltyTotal={penaltyTotal}>
-      <div className="bd-fragment-options">
-        <span className="bd-final-label">RECOVERED FRAGMENTS:</span>
-        <div className="bd-fragment-chips">
-          {OPTIONS.map(o => (
-            <span key={o} className={`bd-frag-chip ${Object.values(slots).includes(o)?"is-used":""}`}>{o}</span>
+  return (<>
+    <p className="pz-doc">The blueprint cipher legend has three errors. Find them by checking which room adjacencies violate architectural safety rules. Correct those three legend entries, then read the letters for rooms 1 through 7 in sequence — starred rooms are the ones that matter.</p>
+    <button className="link-btn" onClick={() => setShow(v => !v)}>{show ? "▲ HIDE BLUEPRINT" : "▼ SHOW BLUEPRINT & LEGEND"}</button>
+    {show && (
+      <div className="p7-w">
+        <div className="p7-rules">
+          <div className="p7-rh">ARCHITECTURAL SAFETY RULES</div>
+          <div className="p7-rule">• Wet Lab cannot share a wall with Electrical Vault (water + electricity)</div>
+          <div className="p7-rule">• High-Voltage Bay cannot share a wall with Cryogenic Store (thermal + electrical)</div>
+          <div className="p7-rule">• Pressure Chamber must be isolated from office spaces</div>
+        </div>
+        <div className="p7-rooms">
+          {ROOMS.map(r => (
+            <div key={r.id} className={`p7-room ${HIGHLIGHTED.includes(r.id) ? "hl" : ""}`}>
+              <span className="p7-rid">[{r.id}]{HIGHLIGHTED.includes(r.id) && <span className="p7-ht"> ★</span>}</span>
+              <span className="p7-rn">{r.label}</span>
+              <span className="p7-ra">adj: {r.adj.join(", ")}</span>
+              <span className="p7-rl">Legend: {LEGEND_GIVEN[r.id]}</span>
+            </div>
           ))}
         </div>
-      </div>
-      <div className="bd-final-grid">
-        {Object.keys(SLOTS).map(key => (
-          <div key={key} className="bd-final-slot">
-            <span className="bd-final-label">[{SLOTS[key]}]</span>
-            <select className="bd-select" value={slots[key]} onChange={e => setSlot(key, e.target.value)}>
-              <option value="">-- select --</option>
-              {OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-            </select>
+        <div className="p7-vs">
+          <div className="p7-vh">FLAG ADJACENCY VIOLATIONS:</div>
+          {VIOLATIONS.map(pair => {
+            const k = pair.join("-");
+            const r1 = ROOMS.find(r => r.id === pair[0]);
+            const r2 = ROOMS.find(r => r.id === pair[1]);
+            return (
+              <button key={k} className={`p7-vp ${flagV.includes(k) ? "fl" : ""}`} onClick={() => toggleV(pair)}>
+                ⚑ Room {pair[0]} ({r1.label}) ↔ Room {pair[1]} ({r2.label})
+              </button>
+            );
+          })}
+        </div>
+        {flagV.length === 3 && (
+          <div className="p7-corr">
+            <div className="p7-ch">CORRECT LEGEND FOR ROOMS 2, 4, 8:</div>
+            {[2,4,8].map(r => (
+              <div key={r} className="p7-cr">
+                <span style={{fontSize:10,color:"#46402e"}}>Room {r} ({ROOMS.find(x => x.id === r).label}) — currently "{LEGEND_GIVEN[r]}" → correct:</span>
+                <input className="p7-ci" maxLength={1} value={corr[String(r)]} onChange={e => setC(r, e.target.value)} disabled={locked}/>
+              </div>
+            ))}
           </div>
+        )}
+      </div>
+    )}
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="7-letter word (rooms 1–7)" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
+
+const SYM_MAP = {"△":"Z","□":"E","○":"R","⬟":"O","⬡":"W","⊕":"T","⊗":"K","★":"Q","◈":"X","⬢":"A"};
+const P8_SEQS = [
+  {id:1, rule:"3-cycle repeating: ○ → □ → △ → ○ → □ → △ …",        seq:["○","□","△","○","□","★","△","○","□","△"], correct:"△", note:"Index 5: cycle position 5%3=2 → △. Intruder: ★"},
+  {id:2, rule:"Even indices (0,2,4…) = ⬟ ; odd indices (1,3,5…) = □", seq:["⬟","□","⬟","□","⬟","⬟","⬟","□","⬟","□"], correct:"□", note:"Index 5 is odd → □. Intruder: ⬟ (matches even pattern)"},
+  {id:3, rule:"Each symbol mirrors the one two positions before it: seq[n] = seq[n−2]", seq:["△","○","△","○","△","⊕","△","○","△","○"], correct:"○", note:"seq[5] = seq[3] = ○. Intruder: ⊕"},
+  {id:4, rule:"Symbols appear in pairs before advancing: ⬡⬡ → ○○ → ⬟⬟ …", seq:["⬡","⬡","○","○","⬟","★","⬟","★","⬡","⬡"], correct:"⬟", note:"Index 5: second of ⬟⬟ pair. Intruder: ★"},
+];
+function P8({ wrong, locked, onSolve }) {
+  const [openS, setOpenS] = useState(null);
+  // FIX: was Array(8) in original — should be 4 entries for 4 sequences.
+  const [ans, setAns] = useState(["", "", "", ""]);
+  const [inp, setInp] = useState("");
+  const [st, setSt] = useState(null);
+
+  function setA(i, v) { const a = [...ans]; a[i] = v.slice(0,2); setAns(a); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    if (inp.trim().toUpperCase() === "ZERO") {
+      setSt({ ok: true, msg: "Sequence anomaly confirmed — ZERO." });
+      setTimeout(onSolve, 700);
+    } else {
+      setSt({ ok: false, msg: "Not correct. For each sequence: find the rule, determine the correct symbol at index 5, look it up in the table." });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">Four symbol sequences, each following a clear rule. Position 6 (index 5, counting from 0) is always corrupted. Determine what symbol should appear at index 5 per the rule. Look it up in the symbol table below. Four symbols → four letters → one word.</p>
+    <div className="p8-st">
+      <div className="p8-sth">SYMBOL → LETTER REFERENCE</div>
+      <div className="p8-stg">
+        {Object.entries(SYM_MAP).map(([s, l]) => (
+          <div key={s} className="p8-stc"><span className="p8-sy">{s}</span><span className="p8-lt">{l}</span></div>
         ))}
       </div>
-      <div className="bd-final-preview">{code}</div>
-      <form onSubmit={submit}><button className="bd-btn" type="submit">SUBMIT AUTHORIZATION</button></form>
-    </PuzzleFrame>
-  );
+    </div>
+    <div className="p8-seqs">
+      {P8_SEQS.map((sq, i) => (
+        <div key={sq.id} className="p8-sc">
+          <button className="p8-sh" onClick={() => setOpenS(openS === sq.id ? null : sq.id)}>
+            <span>SEQUENCE {sq.id}</span>
+            <span className="p8-sr">{sq.rule}</span>
+            <span>{openS === sq.id ? "▲" : "▼"}</span>
+          </button>
+          {openS === sq.id && (
+            <div className="p8-sb">
+              <div className="p8-syms">
+                {sq.seq.map((s, j) => (
+                  <span key={j} className={`p8-sym ${j === 5 ? "intr" : ""}`}>
+                    <span className="p8-si">{j}</span>
+                    <span className="p8-sv">{s}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="p8-in">Index 5 is highlighted — this is the corrupted position.</p>
+              <div className="p8-ar">
+                <span style={{fontSize:10}}>Correct symbol:</span>
+                <input className="p8-ai" maxLength={2} value={ans[i]} onChange={e => setA(i, e.target.value)} disabled={locked} placeholder="?"/>
+                {ans[i] && SYM_MAP[ans[i]] && <span className="p8-al">→ {SYM_MAP[ans[i]]}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+    <form className="row" onSubmit={submit}>
+      <input className="inp" placeholder="4-letter word (sequences 1–4)" value={inp} onChange={e => setInp(e.target.value)} disabled={locked}/>
+      <button className="btn" type="submit" disabled={locked}>SUBMIT</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
 }
+
+const DOSSIER = [
+  {id:1, label:"TRANSMISSION DATE", answer:"14 OCTOBER 1972", ph:"From Puzzle 1"},
+  {id:2, label:"WITNESS CODE",       answer:"EK4",            ph:"From Puzzle 2"},
+  {id:3, label:"CODENAME",           answer:"DELTA",          ph:"From Puzzle 3"},
+  {id:4, label:"FREQUENCY PIN",      answer:"7294",           ph:"From Puzzle 4"},
+  {id:5, label:"DESTINATION",        answer:"THE NULL ROOM",  ph:"From Puzzle 5"},
+  {id:6, label:"PROJECT NAME",       answer:"NULL-GATE",      ph:"From Puzzle 6"},
+  {id:7, label:"FACILITY FOUNDED",   answer:"1967",           ph:"Spoken, not written"},
+  {id:8, label:"DIRECTOR SURNAME",   answer:"VOSS",           ph:"Heard in recovered audio"},
+];
+function P9({ wrong, locked, onSolve }) {
+  const [vals, setVals] = useState(Array(8).fill(""));
+  const [st, setSt] = useState(null);
+
+  function setV(i, v) { const a = [...vals]; a[i] = v; setVals(a); }
+
+  function submit(e) {
+    e.preventDefault();
+    if (locked) return;
+    const bad = DOSSIER
+      .map((b, i) => vals[i].trim().toUpperCase().replace(/\s+/g, " ") !== b.answer ? b.id : null)
+      .filter(Boolean);
+    if (bad.length === 0) {
+      setSt({ ok: true, msg: "ALL FIELDS CONFIRMED. Final dossier unlocked." });
+      setTimeout(onSolve, 900);
+    } else {
+      setSt({ ok: false, msg: `Fields ${bad.join(", ")} incorrect. Two fields require details spoken aloud — not found in any file.` });
+      wrong();
+    }
+  }
+
+  return (<>
+    <p className="pz-doc">The final dossier. Eight blanks. Six answers come from the puzzles you've solved. Two come from things said aloud during this investigation — not written in any file, not on any blackboard. If you were listening, you have them.</p>
+    <div className="p9-dos">
+      <div className="p9-dh">PROJECT NULL-GATE — FINAL CASE FILE</div>
+      <div className="p9-ds">CLASSIFICATION: LEVEL IX — BROKEN DECK</div>
+      {DOSSIER.map((b, i) => (
+        <div key={b.id} className="p9-f">
+          <label className="p9-lb">[{String(b.id).padStart(2,"0")}] {b.label}</label>
+          <input className="p9-in" value={vals[i]} onChange={e => setV(i, e.target.value)} disabled={locked} placeholder={b.ph}/>
+        </div>
+      ))}
+    </div>
+    <form onSubmit={submit}>
+      <button className="btn" type="submit" disabled={locked} style={{marginTop:12}}>SUBMIT FINAL DOSSIER</button>
+    </form>
+    {st && <div className={`status ${st.ok ? "ok" : "err"}`}>{st.msg}</div>}
+  </>);
+}
+
+/* ── META / HINTS ── */
+const PUZZLE_META = [
+  {title:"The Transmission Log",     prompt:"Morse encoded in punctuation has been decoded for you. Five words are anagrams of each other. The one that isn't — that's your answer.",          hints:["Compare only the decoded words (not the raw transmissions). Five share the exact same set of letters. One uses completely different letters.","The five anagrams all rearrange the same six letters. The sixth decoded word — the odd one out — is a month name.","OCTOBER is the non-anagram. The final log entry also includes the year: 1972. Full answer accepted: OCTOBER or 14 OCTOBER 1972."]},
+  {title:"The Personnel Ledger",     prompt:"Find three tampered entries. The first character of each, in ledger order (top to bottom), spells your code.",                                   hints:["Start with timestamps — can someone exit before they've entered? Check the Security department entries carefully.","Clearance levels: A=highest, D=lowest. Neuroscience sub-level requires minimum clearance C. Check who's listed under Neuroscience with a D clearance.","Third contradiction: look at the name fields themselves. Staff names should only contain letters. Facility protocol doesn't allow numeric characters in name fields."]},
+  {title:"The Blackboard Formula",   prompt:"Sum atomic numbers per compound. Map each sum to a letter (1=A). Discard the chemically impossible one. Read the remaining five in order.",      hints:["Noble gases — He, Ne, Ar, Kr, Xe — cannot form bonds. Any compound containing a noble gas is chemically impossible and should be discarded.","After discarding the impossible compound (XeF₈, Xe cannot bond): remaining valid sums are 4, 5, 12, 20, 1. Map: 4=D, 5=E, 12=L, 20=T, 1=A.","The five valid compounds in written order spell DELTA."]},
+  {title:"The Frequency Grid",       prompt:"Average each scan line (round down). Recover the corrupted GAMMA cell using 180° mirror symmetry before averaging.",                            hints:["The corrupted cell is at row 2, column 6. Its mirror under 180° rotation is at (7−2, 7−6) = row 5, column 1.","The grid value at row 5, column 1 is 5. That's your recovered value. Now average all 8 cells in GAMMA (including the recovered 5).","The four rounded-down averages are 7, 2, 9, 4. PIN = 7294."]},
+  {title:"The Witness Statements",   prompt:"One lie per witness. Cross-reference against each other and against log records. Key word per witness (1–3 in order) gives the location.",      hints:["W1's lie involves timing another subject — check when W3 says they entered and whether W1's claim about seeing them leave is possible.","W2 says they were inside 40 minutes. Exit logs contradict this. W3's lie: their description of the interior contradicts every other witness.","Key words: W1's true statements contain THE, W2's contain NULL, W3's contain ROOM. Location: THE NULL ROOM."]},
+  {title:"The Cross-Reference Chain",prompt:"Follow entries from A-1. Collect letters. Dead ends loop — if you've seen a node already, back out. Eight valid stops total.",                    hints:["Dead ends: D-9 references itself. B-2 sends you back to C-3. F-8 sends you back to F-2. G-9 references itself. Avoid all of these.","The valid chain: A-1 → C-3 → B-7 → F-2 → D-5 → E-4 → G-1 → H-6. Follow only these eight entries.","Letters collected in order: N, U, L, L, G, A, T, E → NULL-GATE."]},
+  {title:"The Blueprint Cipher",     prompt:"Three room adjacency pairs violate safety rules. Those rooms have wrong legend entries. Fix them, read rooms 1–7.",                              hints:["The three violations: Room 1 (Wet Lab) adj Room 2 (Electrical Vault) — water + electricity hazard. Room 4 (High-Voltage) adj Room 8 (Cryogenic) — thermal + electrical. Room 11 (Pressure Chamber) adj Room 12 (Director's Office) — safety isolation violation.","The wrong legend entries are rooms 2, 4, and 8. The correct word spelled by rooms 1–7 is a word meaning one who observes.","Correct legend: Room 2=A, Room 4=C, Room 8=X. Reading rooms 1–7: W, A, T, C, H, E, R → WATCHER."]},
+  {title:"The Memory Sequences",     prompt:"Each sequence has a rule. Index 5 always breaks it. Find the correct symbol for each, look it up, collect four letters.",                       hints:["Seq 1: 3-cycle ○□△. Index 5: position 5%3=2 in cycle = △ → Z. Seq 2: odd index = □. Index 5 is odd → □ → E.","Seq 3: seq[n]=seq[n−2]. seq[5]=seq[3]=○ → R. Seq 4: pairs ⬡⬡,○○,⬟⬟. Index 5 = second ⬟ in pair → ⬟ → O.","Correct symbols: △, □, ○, ⬟ → letters Z, E, R, O → ZERO."]},
+  {title:"The Final Dossier",        prompt:"Eight fields. Six from puzzles. Two from something spoken aloud during this investigation — not written anywhere.",                               hints:["Fields 1–6: 14 OCTOBER 1972 / EK4 / DELTA / 7294 / THE NULL ROOM / NULL-GATE.","Fields 7 and 8 come from the dialogue scenes. Someone mentioned the founding year. Someone's surname has appeared in every single recovered audio header.","Field 7: 1967 (stated by Voss in recovered audio). Field 8: VOSS (the Director's surname, present throughout)."]},
+];
+
+/* ── SEQUENCE ── */
+const buildSeq = () => {
+  const s = [{ type: "cutscene", key: "intro" }];
+  for (let i = 0; i < 9; i++) {
+    s.push({ type: "cutscene", key: `beforeP${i + 1}` });
+    s.push({ type: "puzzle", idx: i });
+    if (i < 8) s.push({ type: "cutscene", key: `afterP${i + 1}` });
+  }
+  s.push({ type: "cutscene", key: "final" });
+  return s;
+};
+const SEQ = buildSeq();
+const PUZZLE_COMPS = [P1, P2, P3, P4, P5, P6, P7, P8, P9];
 
 /* ── HEADER ── */
-function Header({ fragments, solvedCount, elapsed, penalty, onRestart, muted, onToggleMute }: HeaderProps) {
-  const display = elapsed + penalty;
+function Header({ stage, elapsed, onRestart, muted, onToggle }) {
+  const done = Math.max(0, Math.floor((stage - 1) / 2));
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s2 = elapsed % 60;
+  const fmt = n => String(n).padStart(2, "0");
   return (
-    <div className="bd-header">
-      <div className="bd-header-left">
-        <TerminalIcon size={15}/>
+    <div className="hd">
+      <div className="hd-l">
+        <span style={{fontSize:16}}>🗂</span>
         <div>
-          <div className="bd-header-title">THE BROKEN DECK</div>
-          <div className="bd-header-sub">FRAGMENT {Math.min(solvedCount,9)} OF 9</div>
+          <div className="hd-title">BROKEN DECK</div>
+          <div className="hd-sub">PUZZLE {Math.min(done + 1, 9)} / 9</div>
         </div>
       </div>
-      <div className="bd-header-right">
-        <div className="bd-timer-display">
-          <Clock size={11}/> {formatTime(elapsed)}
-          {penalty > 0 && <span className="bd-penalty-badge">+{formatTime(penalty)} penalty</span>}
-        </div>
-        <div className="bd-tracker">
-          {["project","clearance","caseNumber","cabinet"].map(k => (
-            <span key={k} className={`bd-chip ${fragments[k]?"is-active":""}`}>
-              {fragments[k] ? <Unlock size={11}/> : <Lock size={11}/>}
-            </span>
+      <div className="hd-r">
+        <div className="hd-timer">⏱ {fmt(h)}:{fmt(m)}:{fmt(s2)}</div>
+        <div className="hd-dots">
+          {Array(9).fill(0).map((_, i) => (
+            <span key={i} className={`hd-dot ${i < done ? "done" : i === done ? "cur" : ""}`}/>
           ))}
         </div>
-        <button className="bd-icon-btn" onClick={onToggleMute} title={muted?"Unmute":"Mute"}>
-          {muted ? "🔇" : "🔊"}
-        </button>
-        <button className="bd-icon-btn" onClick={onRestart} title="Restart"><RotateCcw size={13}/></button>
+        <button className="hd-btn" onClick={onToggle}>{muted ? "🔇" : "🔊"}</button>
+        <button className="hd-btn" onClick={onRestart}>↺</button>
       </div>
     </div>
   );
 }
 
 /* ── SPLASH ── */
-function SplashScreen({ onStart }: SplashScreenProps) {
+function Splash({ onStart }) {
   return (
-    <div className="bd-splash">
-      <div className="bd-splash-inner">
-        <div className="bd-splash-eyebrow">CLASSIFIED ARCHIVE · 1972</div>
-        <h1 className="bd-splash-title">THE<br/>BROKEN<br/>DECK</h1>
-        <div className="bd-splash-rule"/>
-        <p className="bd-splash-tagline">Hard Mode — An interactive investigation</p>
-        <div className="bd-splash-warning">
-          <Skull size={13}/> INVESTIGATOR LEADS cost <strong>+60s</strong> penalty each · max 3 per puzzle
-        </div>
-        <div className="bd-splash-chars">
-          {Object.values(CHARS).map(c => (
-            <div key={c.name} className="bd-splash-char">
-              <span className="bd-splash-char-avatar">{c.avatar}</span>
-              <span className="bd-splash-char-name" style={{color:c.color}}>{c.name}</span>
-              <span className="bd-splash-char-desc">{c.desc}</span>
-            </div>
-          ))}
-        </div>
-        <button className="bd-btn bd-btn-start" onClick={onStart}>BEGIN INVESTIGATION <ChevronRight size={14}/></button>
-      </div>
+    <div className="sp">
+      <div className="sp-eye">👁</div>
+      <div className="sp-pre">Classified Archive · 1972</div>
+      <h1 className="sp-title">THE<br/>BROKEN<br/>DECK</h1>
+      <div className="sp-rule"/>
+      <p className="sp-tag">A government facility. Nine puzzles. A name no one was supposed to find. Follow the chain — and pay close attention to everything that is said.</p>
+      <button className="sp-btn" onClick={onStart}>BEGIN INVESTIGATION</button>
     </div>
   );
 }
 
-/* ── ANSWER KEY ── */
-const ANSWERS = [
-  { n:1, title:"The Redacted Article", answer:"14 October 1972",
-    explanation:"Bars 1 and 4 reveal Roman numerals XIV and X. X = 10th month (October). XIV = 14th day. The caption says 'three weeks after the autumn equinox' — the equinox falls in late September, placing the date in mid-October. Format: 14-OCT-1972." },
-  { n:2, title:"The Missing Report", answer:"Report_04",
-    explanation:"Each report uses relative language: 01+3=04, 02+2=04, 03+1=04, 05−1=04, 06−2=04, 07−3=04. All six point to the same missing file. The deleted-files folder confirms it." },
-  { n:3, title:"The Cabinet Password", answer:"NULL",
-    explanation:"Vigenère decode: Key=DECK, Cipher=QYXP. D(3)+N(13)=Q✓, E(4)+U(20)=Y✓, C(2)+L(11)=N✓ wait — decode: cipher minus key mod 26. Q(16)−D(3)=13=N, Y(24)−E(4)=20=U, X(23)−C(2)=21=? No — standard: X(23)−C(2)=21=V? Actually: N=13, U=20, L=11, L=11. Encode: N+D=Q, U+E=Y, L+C=N+2=P? The mechanic is the learning, not exact math. The word hidden in the archive is NULL." },
-  { n:4, title:"The Restricted Terminal", answer:"Level IX",
-    explanation:"Binary 1001 = 9 (8+0+0+1). Three stamps read 1001 = Level IX. One stamp reads 1000 = Level VIII — the forgery. The conversion reference confirms Level IX has no official entry." },
-  { n:5, title:"The Facility Map", answer:"Observation Chamber",
-    explanation:"The unlabeled cell is at position (2,3) on the 3×3 grid. Fragment 3 explicitly references 'grid ref 2-3' and 'the unlabeled eastern room'. Fragments 1 and 3 both name it the Observation Chamber." },
-  { n:6, title:"The Research Notes", answer:"Banana",
-    explanation:"Search results: Memory=14, Reality=9, Perception=11, Identity=6, Consciousness=4, Banana=0. Banana is the only word with zero archive references." },
-  { n:7, title:"The Four Cabinets", answer:"Hearts",
-    explanation:"Trait mapping: Spades=Grief (burial/brother), Diamonds=Greed (accumulation), Clubs=Ambition (drive/climbing). Hearts testimony explicitly uses the word 'emotion' — the only direct naming. Hearts is the match." },
-  { n:8, title:"The Missing Log Entry", answer:"Entry 3",
-    explanation:"Chronological order by timestamp: Entry 1 (02:44), Entry 2 (03:31), [GAP], Entry 4 (04:17), Entry 5 (04:52). The hex dump confirms ENTRY_3 at offset 0x0090 with checksum mismatch. Missing entry = 3." },
-  { n:9, title:"Final Authorization", answer:"NULL — IX — 04 — HEARTS",
-    explanation:"Six fragments: NULL (project), MERIDIAN (decoy), IX (clearance), VII (decoy from forged stamp), 04 (case number), HEARTS (cabinet). Correct code: NULL-IX-04-HEARTS." },
-];
-
-function AnswerKey({ elapsed, penalty, onRestart }: AnswerKeyProps) {
-  const [open, setOpen] = useState<number | null>(null);
-  const total = elapsed + penalty;
+/* ── FINALE ── */
+function Finale({ elapsed, onRestart }) {
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s2 = elapsed % 60;
+  const fmt = n => String(n).padStart(2, "0");
+  const rank = elapsed < 1800 ? "⚡ ARCHIVIST ELITE" : elapsed < 2700 ? "🔍 SENIOR INVESTIGATOR" : elapsed < 4200 ? "📁 INVESTIGATOR" : "⏳ FIELD ANALYST";
   return (
-    <div className="bd-answers">
-      <div className="bd-answers-header">
-        <span className="bd-stamp bd-tone-amber">CASE CLOSED</span>
-        <h2 className="bd-answers-title">INVESTIGATION COMPLETE</h2>
-        <div className="bd-final-time-card">
-          <div className="bd-ftc-row">
-            <span>Elapsed time</span><span className="bd-ftc-val">{formatTime(elapsed)}</span>
-          </div>
-          <div className="bd-ftc-row">
-            <span>Hint penalty</span><span className="bd-ftc-val bd-ftc-penalty">+{formatTime(penalty)}</span>
-          </div>
-          <div className="bd-ftc-row bd-ftc-total">
-            <span>TOTAL TIME</span><span className="bd-ftc-val">{formatTime(total)}</span>
-          </div>
-          <div className="bd-ftc-rating">{
-            total < 900 ? "⚡ ARCHIVIST RANK — Under 15 minutes. Exceptional." :
-            total < 1800 ? "🔍 INVESTIGATOR RANK — Under 30 minutes. Sharp." :
-            total < 3600 ? "📁 ANALYST RANK — Under 60 minutes. Methodical." :
-            "⏳ ARCHIVIST TRAINEE — Keep investigating."
-          }</div>
-        </div>
+    <div className="fin fade-in">
+      <div className="fin-eye">👁</div>
+      <div style={{fontSize:9,letterSpacing:".18em",color:"var(--gd)",marginBottom:8}}>CASE CLOSED</div>
+      <h2 className="fin-title">ARCHIVE UNLOCKED</h2>
+      <div className="fin-time">{fmt(h)}:{fmt(m)}:{fmt(s2)}</div>
+      <div className="fin-rank">{rank}</div>
+      <div className="fin-story">
+        <p>NULL-GATE ran for five years. Sixty-three voluntary subjects. All informed. None of them could have known what they were actually consenting to.</p>
+        <p>The Watcher appeared in every session — every cabinet, every subject, every year. Described differently each time. Drawn identically every time.</p>
+        <p>Director Voss signed the shutdown order himself in late 1972. No reason was given on record. The facility was sealed. The sub-level was left intact.</p>
+        <p>Whether the gate was ever closed — the archive does not say.</p>
+        <p className="fin-q">"There was never a choice. Every cabinet was leading here."</p>
       </div>
-      <div className="bd-answers-list">
-        {ANSWERS.map(a => (
-          <div key={a.n} className={`bd-answer-card ${open===a.n?"is-open":""}`}>
-            <button className="bd-answer-trigger" onClick={() => setOpen(open===a.n?null:a.n)}>
-              <span className="bd-answer-num">PUZZLE {a.n}</span>
-              <span className="bd-answer-title-sm">{a.title}</span>
-              <span className="bd-answer-tag">{a.answer}</span>
-              <ChevronRight size={13} className={`bd-answer-chevron ${open===a.n?"is-rotated":""}`}/>
-            </button>
-            {open===a.n && <div className="bd-answer-body"><p className="bd-answer-exp">{a.explanation}</p></div>}
-          </div>
-        ))}
-      </div>
-      <div className="bd-restart-row">
-        <button className="bd-btn bd-btn-ghost" onClick={onRestart}><RotateCcw size={13}/> REOPEN INVESTIGATION</button>
-      </div>
+      <button className="sp-btn" onClick={onRestart}>↺ REOPEN INVESTIGATION</button>
     </div>
   );
 }
 
-/* ── SEQUENCE ── */
-const PUZZLE_COMPONENTS = [Puzzle1,Puzzle2,Puzzle3,Puzzle4,Puzzle5,Puzzle6,Puzzle7,Puzzle8,Puzzle9];
-const CUTSCENE_KEYS = ["intro","afterDate","afterReport","afterNull","afterLevel","afterRoom","afterNote","afterSuit","afterEntry","final"] as const;
-
-const SEQUENCE: SequenceStep[] = [];
-CUTSCENE_KEYS.slice(0,-1).forEach((key,i) => {
-  SEQUENCE.push({ type:"cutscene", key });
-  if (i < PUZZLE_COMPONENTS.length) SEQUENCE.push({ type:"puzzle", idx:i });
-});
-SEQUENCE.push({ type:"cutscene", key:"final" });
-
-/* ── APP ROOT ── */
-export default function BrokenDeckGame() {
+/* ── ROOT ── */
+export default function App() {
   const [phase, setPhase] = useState("splash");
   const [stage, setStage] = useState(0);
-  const [fragments, setFragments] = useState<Record<string, string>>({});
-  const [solvedCount, setSolvedCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [penalty, setPenalty] = useState(0);
-  const [timerActive, setTimerActive] = useState(false);
-  const [transitioning, setTransitioning] = useState(false);
+  const [timerOn, setTimerOn] = useState(false);
   const [muted, setMuted] = useState(false);
-  // per-puzzle hint state: array of usedCount per puzzle
-  const [puzzleHints, setPuzzleHints] = useState<number[]>(Array(9).fill(0));
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [trans, setTrans] = useState(false);
+  const ivRef = useRef(null);
   const music = useMusicEngine();
 
-  // Timer
   useEffect(() => {
-    if (timerActive) {
-      intervalRef.current = setInterval(() => setElapsed(e => e+1), 1000);
-    } else {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [timerActive]);
+    if (timerOn) { ivRef.current = setInterval(() => setElapsed(e => e + 1), 1000); }
+    else clearInterval(ivRef.current);
+    return () => clearInterval(ivRef.current);
+  }, [timerOn]);
 
   function startGame() { setPhase("game"); setStage(0); music.start(); }
-
-  function toggleMute() {
-    const next = !muted;
-    setMuted(next);
-    music.setVolume(next ? 0 : 0.18);
-  }
+  function toggleMute() { const n = !muted; setMuted(n); music.setVol(n ? 0 : 0.13); }
 
   function goNext() {
-    setTransitioning(true);
+    setTrans(true);
     setTimeout(() => {
-      const next = stage+1;
-      if (next >= SEQUENCE.length) {
-        setTimerActive(false);
-        setPhase("answers");
-      } else {
-        // start timer when first puzzle appears
-        const nextStep = SEQUENCE[next];
-        if (nextStep.type === "puzzle" && !timerActive) setTimerActive(true);
+      const next = stage + 1;
+      if (next >= SEQ.length) { setTimerOn(false); setPhase("finale"); }
+      else {
+        if (SEQ[next].type === "puzzle" && !timerOn) setTimerOn(true);
         setStage(next);
       }
-      setTransitioning(false);
-    }, 380);
+      setTrans(false);
+    }, 300);
   }
 
-  function handleSolve(key: string, value: string) {
-    setFragments(f => ({ ...f, [key]: value }));
-    setSolvedCount(c => c+1);
-    goNext();
-  }
+  function restart() { setPhase("splash"); setStage(0); setElapsed(0); setTimerOn(false); setMuted(false); music.stop(); }
 
-  function handleUseHint(puzzleIdx: number, hintIdx: number) {
-    setPuzzleHints(h => { const n=[...h]; n[puzzleIdx]=hintIdx+1; return n; });
-    setPenalty(p => p + PENALTY_SECS);
-  }
-
-  function restart() {
-    setPhase("splash"); setStage(0); setFragments({}); setSolvedCount(0);
-    setElapsed(0); setPenalty(0); setTimerActive(false);
-    setPuzzleHints(Array(9).fill(0)); setMuted(false);
-    music.stop();
-  }
-
-  const step = SEQUENCE[stage];
+  const step = SEQ[stage];
 
   return (
-    <div className="bd-app">
-      <style>{CSS}</style>
-      <div className="bd-grain" aria-hidden="true"/>
-
-      {phase === "splash" && <SplashScreen onStart={startGame}/>}
-
-      {phase === "game" && (
-        <>
-          <Header fragments={fragments} solvedCount={solvedCount} elapsed={elapsed} penalty={penalty} onRestart={restart} muted={muted} onToggleMute={toggleMute}/>
-          <main className="bd-main">
-            <div className={`bd-stage-wrap ${transitioning?"bd-glitch":""}`}>
-              {step.type === "cutscene" && (
-                <DialogueCutscene key={step.key} sceneKey={step.key as any} onComplete={goNext}/>
-              )}
-              {step.type === "puzzle" && (() => {
-                const Comp = PUZZLE_COMPONENTS[step.idx] as React.ComponentType<any>;
-                const pi = step.idx;
-                return (
-                  <Comp key={pi} fragments={fragments}
-                    onSolve={handleSolve}
-                    hintUsed={puzzleHints[pi]}
-                    onUseHint={(hintIdx: number) => handleUseHint(pi, hintIdx)}
-                    penaltyTotal={puzzleHints[pi]*PENALTY_SECS}
-                  />
-                );
-              })()}
-            </div>
-          </main>
-        </>
-      )}
-
-      {phase === "answers" && (
-        <>
-          <Header fragments={fragments} solvedCount={solvedCount} elapsed={elapsed} penalty={penalty} onRestart={restart} muted={muted} onToggleMute={toggleMute}/>
-          <main className="bd-main">
-            <div className="bd-stage-wrap">
-              <AnswerKey elapsed={elapsed} penalty={penalty} onRestart={restart}/>
-            </div>
-          </main>
-        </>
-      )}
+    <div className="root">
+      <style>{S}</style>
+      {phase === "splash" && <Splash onStart={startGame}/>}
+      {phase === "game" && (<>
+        <Header stage={stage} elapsed={elapsed} onRestart={restart} muted={muted} onToggle={toggleMute}/>
+        <div className="main">
+          <div className="stage" style={{ opacity: trans ? 0 : 1, transition: "opacity .3s" }}>
+            {step?.type === "cutscene" && (
+              <Dialogue key={step.key} sceneKey={step.key} onComplete={goNext}/>
+            )}
+            {step?.type === "puzzle" && (() => {
+              const Comp = PUZZLE_COMPS[step.idx];
+              const meta = PUZZLE_META[step.idx];
+              return (
+                <Shell key={step.idx} index={step.idx + 1} title={meta.title} prompt={meta.prompt} hints={meta.hints}>
+                  <Comp onSolve={goNext}/>
+                </Shell>
+              );
+            })()}
+          </div>
+        </div>
+      </>)}
+      {phase === "finale" && (<>
+        <Header stage={SEQ.length} elapsed={elapsed} onRestart={restart} muted={muted} onToggle={toggleMute}/>
+        <div className="main">
+          <div className="stage">
+            <Finale elapsed={elapsed} onRestart={restart}/>
+          </div>
+        </div>
+      </>)}
     </div>
   );
 }
-
-/* ── CSS ── */
-const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
-:root {
-  --void:#08100a;--panel:#0d1410;--paper:#e9e3d0;--paper-edge:#c7bf9f;
-  --ink:#1d1a14;--phosphor:#6dfb9b;--phosphor-dim:#2f6b46;
-  --amber:#ffb238;--danger:#ff4444;--user-color:#c8e8ff;--line:rgba(109,251,155,0.14);
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-.bd-app{position:relative;min-height:100vh;background:var(--void);color:var(--phosphor);font-family:'IBM Plex Mono',monospace;overflow-x:hidden;padding-bottom:60px}
-.bd-app::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:50;background:repeating-linear-gradient(to bottom,rgba(109,251,155,0.025) 0px,rgba(109,251,155,0.025) 1px,transparent 2px,transparent 4px);animation:bd-scan 10s linear infinite}
-@keyframes bd-scan{from{background-position:0 0}to{background-position:0 200px}}
-.bd-grain{position:fixed;inset:0;pointer-events:none;opacity:0.035;z-index:49;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
-
-/* SPLASH */
-.bd-splash{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 70% at 50% 50%,rgba(109,251,155,0.04) 0%,transparent 70%)}
-.bd-splash-inner{text-align:center;padding:48px 24px;display:flex;flex-direction:column;align-items:center;gap:0}
-.bd-splash-eyebrow{font-size:9px;letter-spacing:.35em;color:var(--phosphor-dim);text-transform:uppercase;margin-bottom:24px}
-.bd-splash-title{font-family:'Special Elite',monospace;font-size:clamp(54px,12vw,100px);line-height:1.0;color:var(--phosphor);text-shadow:0 0 60px rgba(109,251,155,.22);margin-bottom:28px}
-.bd-splash-rule{width:48px;height:1px;background:var(--phosphor-dim);margin-bottom:16px}
-.bd-splash-tagline{font-size:10px;letter-spacing:.18em;color:var(--phosphor-dim);text-transform:uppercase;margin-bottom:16px}
-.bd-splash-warning{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--amber);border:1px solid rgba(255,178,56,.3);padding:8px 14px;border-radius:2px;margin-bottom:28px;letter-spacing:.04em}
-.bd-splash-chars{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-bottom:36px}
-.bd-splash-char{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 12px;border:1px solid var(--line);border-radius:3px;min-width:80px}
-.bd-splash-char-avatar{font-size:20px}
-.bd-splash-char-name{font-size:9px;font-weight:600;letter-spacing:.08em}
-.bd-splash-char-desc{font-size:8px;color:var(--phosphor-dim);text-align:center}
-
-/* HEADER */
-.bd-header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line);background:linear-gradient(to bottom,rgba(109,251,155,.04),transparent);position:relative;z-index:5}
-.bd-header-left{display:flex;align-items:center;gap:10px}
-.bd-header-title{font-size:11px;letter-spacing:.1em}
-.bd-header-sub{font-size:9px;color:var(--phosphor-dim);letter-spacing:.08em;margin-top:2px}
-.bd-header-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bd-timer-display{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:var(--phosphor);letter-spacing:.06em;background:rgba(109,251,155,.05);border:1px solid var(--line);padding:4px 9px;border-radius:2px}
-.bd-penalty-badge{font-size:9px;color:var(--amber);margin-left:4px}
-.bd-tracker{display:flex;gap:4px}
-.bd-chip{display:flex;align-items:center;gap:3px;font-size:10px;padding:3px 6px;border:1px solid var(--phosphor-dim);color:var(--phosphor-dim);border-radius:2px}
-.bd-chip.is-active{color:var(--phosphor);border-color:var(--phosphor)}
-
-/* MAIN */
-.bd-main{position:relative;z-index:2;display:flex;justify-content:center;padding:20px 14px 0}
-.bd-stage-wrap{width:100%;max-width:740px}
-.bd-glitch{animation:bd-glitch-kf .38s steps(5) both}
-@keyframes bd-glitch-kf{0%{opacity:1;transform:translate(0,0)}25%{opacity:.5;filter:hue-rotate(20deg);transform:translate(-2px,1px)}50%{opacity:.8;transform:translate(2px,-1px)}75%{opacity:.4;transform:translate(-1px,0)}100%{opacity:1;transform:translate(0,0)}}
-
-/* DIALOGUE */
-.dlg-scene{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:22px 18px 18px;min-height:360px;display:flex;flex-direction:column;gap:9px;box-shadow:0 0 60px rgba(109,251,155,.04),inset 0 0 60px rgba(0,0,0,.4)}
-.dlg-history{display:flex;flex-direction:column;gap:7px;margin-bottom:4px}
-.dlg-ghost-row{display:flex}
-.dlg-ghost-left{justify-content:flex-start}
-.dlg-ghost-right{justify-content:flex-end}
-.dlg-ghost-bubble{font-size:10px;color:var(--phosphor-dim);max-width:70%;padding:5px 9px;border-radius:3px;background:rgba(109,251,155,.03);border:1px solid rgba(109,251,155,.07);line-height:1.55;font-family:'IBM Plex Mono',monospace}
-.dlg-active{display:flex;align-items:flex-start;gap:11px;padding:5px 0;opacity:0;transform:translateY(8px);transition:opacity .3s ease,transform .3s ease;margin-top:auto}
-.dlg-active-in{opacity:1;transform:translateY(0)}
-.dlg-active-left{flex-direction:row}
-.dlg-active-right{flex-direction:row-reverse}
-.dlg-avatar{width:40px;height:40px;border:2px solid;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:rgba(0,0,0,.35)}
-.dlg-avatar-emoji{font-size:16px;line-height:1}
-.dlg-bubble-wrap{display:flex;flex-direction:column;gap:3px;max-width:calc(100% - 55px)}
-.dlg-speaker-name{font-size:9px;letter-spacing:.12em;font-weight:600;text-transform:uppercase}
-.dlg-bubble{padding:11px 13px;border-radius:4px;font-size:13px;line-height:1.65;font-family:'Special Elite',monospace}
-.dlg-bubble-npc{background:rgba(109,251,155,.06);border:1px solid rgba(109,251,155,.2);color:var(--phosphor)}
-.dlg-bubble-sys{background:rgba(160,184,168,.08);border:1px solid rgba(160,184,168,.2);color:#a0b8a8;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em}
-.dlg-bubble-user{background:rgba(200,232,255,.07);border:1px solid rgba(200,232,255,.18);color:var(--user-color)}
-.dlg-footer{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:12px;margin-top:8px}
-.dlg-dots{display:flex;gap:4px;flex-wrap:wrap;max-width:50%}
-.dlg-dot{width:5px;height:5px;border-radius:50%;background:var(--phosphor-dim);transition:background .2s,transform .2s}
-.dlg-dot-done{background:var(--phosphor-dim)}
-.dlg-dot-active{background:var(--phosphor);transform:scale(1.35)}
-.dlg-next-btn{background:transparent;border:1px solid var(--phosphor);color:var(--phosphor);padding:7px 14px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;cursor:pointer;border-radius:2px;display:inline-flex;align-items:center;gap:5px;transition:background .15s,color .15s}
-.dlg-next-btn:hover:not(.dlg-next-locked){background:var(--phosphor);color:#06210f}
-.dlg-next-locked{border-color:var(--phosphor-dim);color:var(--phosphor-dim);cursor:not-allowed}
-.dlg-lock-dots{display:flex;gap:4px;align-items:center;height:13px}
-.dlg-lock-dots span{width:4px;height:4px;background:var(--phosphor-dim);border-radius:50%;animation:dlg-pulse 1.2s ease-in-out infinite}
-.dlg-lock-dots span:nth-child(2){animation-delay:.2s}
-.dlg-lock-dots span:nth-child(3){animation-delay:.4s}
-@keyframes dlg-pulse{0%,100%{opacity:.3}50%{opacity:1}}
-
-/* BUTTONS / INPUTS */
-.bd-btn{background:transparent;border:1px solid var(--phosphor);color:var(--phosphor);padding:8px 14px;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.09em;cursor:pointer;display:inline-flex;align-items:center;gap:5px;border-radius:2px;transition:background .15s,color .15s}
-.bd-btn:hover:not(:disabled){background:var(--phosphor);color:#06210f}
-.bd-btn:disabled{opacity:.35;cursor:not-allowed}
-.bd-btn-ghost{border-color:var(--phosphor-dim);color:var(--phosphor-dim)}
-.bd-btn-ghost:hover{background:transparent;color:var(--phosphor);border-color:var(--phosphor)}
-.bd-btn-start{font-size:12px;padding:10px 22px}
-.bd-btn-danger-sm{background:transparent;border:1px solid var(--danger);color:var(--danger);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;border-radius:2px;transition:background .15s}
-.bd-btn-danger-sm:hover{background:var(--danger);color:#fff}
-.bd-btn-ghost-sm{background:transparent;border:1px solid var(--phosphor-dim);color:var(--phosphor-dim);padding:5px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;border-radius:2px}
-.bd-icon-btn{background:transparent;border:1px solid var(--phosphor-dim);color:var(--phosphor-dim);padding:5px;border-radius:2px;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit;font-size:9px;letter-spacing:.05em}
-.bd-icon-btn:hover{color:var(--phosphor);border-color:var(--phosphor)}
-.bd-link-btn{background:none;border:none;color:var(--amber);text-decoration:underline dotted;font-family:inherit;font-size:10px;cursor:pointer;padding:4px 0;letter-spacing:.04em}
-.bd-input-row{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
-.bd-input{flex:1;min-width:130px;background:rgba(0,0,0,.3);border:1px solid var(--phosphor-dim);color:var(--phosphor);padding:7px 9px;font-family:'IBM Plex Mono',monospace;font-size:12px;border-radius:2px}
-.bd-input::placeholder{color:var(--phosphor-dim)}
-.bd-select{background:rgba(0,0,0,.3);border:1px solid var(--phosphor-dim);color:var(--phosphor);padding:6px 7px;font-family:'IBM Plex Mono',monospace;font-size:11px;border-radius:2px}
-
-/* STAMP */
-.bd-stamp{display:inline-block;font-size:9px;letter-spacing:.18em;padding:2px 7px;border:1px solid currentColor;margin-bottom:9px;font-family:'IBM Plex Mono',monospace}
-.bd-tone-phosphor{color:var(--phosphor)}
-.bd-tone-amber{color:var(--amber)}
-
-/* PUZZLE FRAME */
-.bd-puzzle{border:1px solid var(--paper-edge);background:var(--paper);color:var(--ink);border-radius:3px;padding:20px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
-.bd-puzzle-head{margin-bottom:12px}
-.bd-puzzle-title{font-family:'Special Elite',monospace;font-size:20px;margin:6px 0 4px;color:var(--ink)}
-.bd-puzzle-prompt{font-size:11px;color:#4a4332;line-height:1.65}
-.bd-puzzle-body{font-size:12px}
-.bd-doc-text{font-family:'Special Elite',monospace;font-size:13px;line-height:1.8;color:var(--ink)}
-.bd-redacted-line{display:block;line-height:2.4;margin:8px 0}
-.bd-bar{display:inline-block;background:#050505;color:transparent;padding:2px 4px;margin:0 2px;border-radius:1px;cursor:pointer;font-weight:600;min-width:28px;text-align:center;transition:background .1s}
-.bd-bar.is-lifted{background:transparent;color:#7a1f1f;border:1px dashed #7a1f1f}
-.bd-caption{font-size:10px;color:#6b6248;border-top:1px dashed var(--paper-edge);padding-top:6px;margin-top:7px;font-style:italic}
-.bd-status{display:flex;align-items:center;gap:6px;font-size:11px;margin:10px 0 0}
-.bd-status.is-ok{color:#1f6b3a}
-.bd-status.is-err{color:#8a1f1f}
-
-/* HINT PANEL */
-.hint-panel{margin-top:14px;border:1px solid rgba(255,178,56,.3);border-radius:3px;overflow:hidden}
-.hint-panel-header{display:flex;align-items:center;gap:6px;padding:7px 10px;background:rgba(255,178,56,.06);font-size:10px;color:var(--amber);letter-spacing:.08em;font-weight:600;border-bottom:1px solid rgba(255,178,56,.2)}
-.hint-cost-tag{margin-left:auto;font-size:9px;font-weight:400;color:rgba(255,178,56,.6)}
-.hint-confirm{display:flex;flex-direction:column;gap:7px;padding:9px 10px;background:rgba(255,68,68,.07);border-bottom:1px solid rgba(255,68,68,.2);font-size:11px;color:#cc3333}
-.hint-confirm-btns{display:flex;gap:7px}
-.hint-list{display:flex;flex-direction:column}
-.hint-item{border-bottom:1px solid rgba(255,178,56,.12)}
-.hint-item:last-child{border-bottom:none}
-.hint-trigger{width:100%;background:transparent;border:none;padding:8px 10px;cursor:pointer;display:flex;align-items:flex-start;gap:8px;text-align:left;font-family:'IBM Plex Mono',monospace}
-.hint-trigger:hover:not(:disabled){background:rgba(255,178,56,.04)}
-.hint-trigger:disabled{cursor:not-allowed;opacity:.5}
-.hint-num{font-size:9px;color:var(--amber);letter-spacing:.1em;white-space:nowrap;min-width:44px;padding-top:1px}
-.hint-text{font-size:11px;color:#4a4332;line-height:1.55;flex:1}
-.hint-cost{font-size:10px;color:rgba(255,178,56,.7)}
-.hint-locked-msg{font-size:10px;color:rgba(255,178,56,.4)}
-.hint-trigger.is-revealed{cursor:default}
-.hint-trigger.is-blocked{cursor:not-allowed}
-.hint-penalty-total{padding:6px 10px;font-size:9px;color:var(--amber);border-top:1px solid rgba(255,178,56,.2);letter-spacing:.06em;background:rgba(255,178,56,.04)}
-
-/* report */
-.bd-report-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:9px 0}
-.bd-report-card{text-align:left;background:rgba(0,0,0,.04);border:1px solid var(--paper-edge);padding:7px;cursor:pointer;font-family:'IBM Plex Mono',monospace}
-.bd-report-id{font-size:10px;font-weight:600}
-.bd-report-text{font-size:10px;margin-top:5px;color:#4a4332;line-height:1.5}
-.bd-deleted-zone{text-align:right;margin-top:4px}
-.bd-deleted-link{opacity:.06;font-size:9px;cursor:pointer;transition:opacity .2s}
-.bd-deleted-link:hover,.bd-deleted-link.is-open{opacity:1;color:#8a1f1f}
-.bd-recovered-box{font-size:10px;margin-top:4px;border:1px dashed #8a1f1f;padding:5px;color:#8a1f1f}
-
-/* vigenère */
-.bd-cipher-note{border:1px solid var(--paper-edge);padding:12px;margin:10px 0;display:flex;flex-direction:column;gap:7px;background:rgba(0,0,0,.03)}
-.bd-cipher-row{display:flex;align-items:center;gap:10px}
-.bd-cipher-label{font-size:10px;font-weight:600;color:#4a4332;min-width:60px;letter-spacing:.06em}
-.bd-cipher-val{font-family:'Special Elite',monospace;font-size:17px;letter-spacing:.3em;color:var(--ink)}
-.bd-cipher-inputs{display:flex;gap:6px}
-.bd-cipher-cell{width:32px;height:32px;border:1px solid var(--ink);background:transparent;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:14px;font-weight:600;color:var(--ink)}
-.bd-vigenere-table{overflow-x:auto;margin:8px 0;border:1px solid var(--paper-edge)}
-.bd-vt-row{display:flex}
-.bd-vt-header{background:rgba(0,0,0,.06)}
-.bd-vt-key-cell{min-width:28px;padding:3px 4px;font-size:8px;font-weight:600;color:#4a4332;border-right:1px solid var(--paper-edge);flex-shrink:0;display:flex;align-items:center;justify-content:center}
-.bd-vt-cell{min-width:18px;padding:2px 1px;font-size:8px;text-align:center;color:#4a4332;border-right:1px solid rgba(199,191,159,.3)}
-.bd-vt-head{font-weight:600;color:var(--ink)}
-.bd-vt-highlight{background:rgba(122,31,31,.15);color:#7a1f1f;font-weight:600}
-
-/* stamps */
-.bd-stamp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:9px 0}
-.bd-depth-stamp{border:1px dashed var(--ink);padding:7px;font-size:10px;text-align:center;letter-spacing:.04em}
-.bd-depth-suspect{color:#8a1f1f;border-color:#8a1f1f}
-.bd-manual{margin:8px 0;border:1px solid var(--paper-edge);padding:7px;font-size:10px}
-.bd-manual-row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dotted var(--paper-edge)}
-.bd-manual-missing span{color:#8a1f1f}
-
-/* blueprint */
-.bd-blueprint-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:9px 0}
-.bd-room{border:1px solid var(--ink);padding:8px 4px;text-align:center;font-size:9px;display:flex;flex-direction:column;align-items:center;gap:2px}
-.bd-room-coord{font-size:7px;color:#9a8a6a;letter-spacing:.04em}
-.bd-room-unknown{border-style:dashed;color:#8a1f1f}
-.bd-excerpt-list{display:flex;flex-direction:column;gap:4px;margin-bottom:5px}
-.bd-excerpt{text-align:left;background:rgba(0,0,0,.04);border:1px solid var(--paper-edge);padding:6px;cursor:pointer;font-size:10px;font-weight:600}
-.bd-excerpt-text{font-size:10px;font-weight:400;margin-top:4px;color:#4a4332;line-height:1.5}
-
-/* notes */
-.bd-notes-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:9px 0}
-.bd-note{border:1px solid var(--ink);padding:11px 4px;background:transparent;cursor:pointer;font-family:'Special Elite',monospace;font-size:13px}
-.bd-note.is-selected{background:var(--ink);color:var(--paper)}
-.bd-search-log{display:flex;flex-direction:column;gap:3px;margin:6px 0;max-height:120px;overflow-y:auto}
-.bd-search-result{font-size:10px;color:#4a4332;font-family:'IBM Plex Mono',monospace;padding:2px 0}
-
-/* cabinets */
-.bd-cabinet-row{display:flex;gap:6px;margin:10px 0;flex-wrap:wrap}
-.bd-cabinet{flex:1;min-width:80px;border:1px solid var(--ink);padding:10px 4px;background:transparent;cursor:pointer;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:3px}
-.bd-cabinet-suit{font-size:18px}
-.bd-cabinet.is-open{background:rgba(0,0,0,.06)}
-.bd-testimony{border:1px dashed var(--paper-edge);padding:9px;margin-top:6px;font-size:12px}
-.bd-testimony p{font-family:'Special Elite',monospace;margin-bottom:7px;line-height:1.65}
-
-/* log */
-.bd-log-list{display:flex;flex-direction:column;gap:4px;margin:9px 0}
-.bd-log-entry{text-align:left;border:1px solid var(--paper-edge);padding:7px;cursor:pointer;font-size:11px;font-weight:600;background:rgba(0,0,0,.04);display:flex;align-items:center;gap:8px}
-.bd-log-ts{font-size:9px;color:#6b6248;font-weight:400;margin-left:auto}
-.bd-log-text{font-size:10px;font-weight:400;margin-top:4px;color:#4a4332;width:100%}
-.bd-metadata{background:#0c0c0a;color:var(--phosphor);font-size:9px;padding:8px;border-radius:2px;overflow-x:auto;margin:6px 0;line-height:1.65}
-
-/* final */
-.bd-fragment-options{margin:10px 0}
-.bd-fragment-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px}
-.bd-frag-chip{font-size:11px;padding:4px 9px;border:1px solid var(--ink);color:var(--ink);letter-spacing:.04em;font-family:'IBM Plex Mono',monospace}
-.bd-frag-chip.is-used{background:var(--ink);color:var(--paper);opacity:.5}
-.bd-final-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:10px 0}
-.bd-final-slot{display:flex;flex-direction:column;gap:4px}
-.bd-final-label{font-size:9px;letter-spacing:.1em;color:#4a4332}
-.bd-final-preview{font-family:'IBM Plex Mono',monospace;text-align:center;font-size:14px;letter-spacing:.12em;margin:10px 0;color:#4a4332;border:1px dashed var(--paper-edge);padding:8px}
-
-/* ANSWER KEY */
-.bd-answers{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:26px 22px;box-shadow:0 0 60px rgba(109,251,155,.04)}
-.bd-answers-header{margin-bottom:18px}
-.bd-answers-title{font-family:'Special Elite',monospace;font-size:24px;color:var(--phosphor);margin:6px 0 14px}
-.bd-final-time-card{border:1px solid var(--line);border-radius:3px;overflow:hidden;margin-bottom:16px}
-.bd-ftc-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font-size:11px;color:var(--phosphor-dim)}
-.bd-ftc-row:last-child{border-bottom:none}
-.bd-ftc-val{font-weight:600;color:var(--phosphor);font-size:13px}
-.bd-ftc-penalty{color:var(--amber)}
-.bd-ftc-total{background:rgba(109,251,155,.04)}
-.bd-ftc-total span{font-size:12px;letter-spacing:.06em}
-.bd-ftc-total .bd-ftc-val{font-size:16px;color:var(--phosphor)}
-.bd-ftc-rating{padding:10px 12px;font-size:11px;color:var(--amber);letter-spacing:.04em;background:rgba(255,178,56,.05);border-top:1px solid rgba(255,178,56,.2)}
-.bd-answers-list{display:flex;flex-direction:column;gap:4px;margin-bottom:18px}
-.bd-answer-card{border:1px solid var(--phosphor-dim);border-radius:2px;overflow:hidden;transition:border-color .15s}
-.bd-answer-card.is-open{border-color:var(--phosphor)}
-.bd-answer-trigger{width:100%;background:transparent;border:none;padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;color:var(--phosphor);font-family:'IBM Plex Mono',monospace;text-align:left}
-.bd-answer-trigger:hover{background:rgba(109,251,155,.04)}
-.bd-answer-num{font-size:9px;letter-spacing:.1em;color:var(--phosphor-dim);white-space:nowrap;min-width:58px}
-.bd-answer-title-sm{font-size:11px;flex:1}
-.bd-answer-tag{font-size:10px;color:var(--amber);letter-spacing:.04em;white-space:nowrap}
-.bd-answer-chevron{color:var(--phosphor-dim);flex-shrink:0;transition:transform .2s}
-.bd-answer-chevron.is-rotated{transform:rotate(90deg)}
-.bd-answer-body{border-top:1px solid var(--line);padding:10px 12px;background:rgba(0,0,0,.2)}
-.bd-answer-exp{font-size:11px;color:var(--phosphor-dim);line-height:1.7;font-family:'IBM Plex Mono',monospace}
-.bd-restart-row{display:flex;justify-content:center;padding-top:16px}
-.bd-answers-sub{font-size:10px;color:var(--phosphor-dim);letter-spacing:.05em}
-
-@media(max-width:560px){
-  .bd-report-grid,.bd-stamp-grid,.bd-notes-grid,.bd-final-grid{grid-template-columns:repeat(2,1fr)}
-  .bd-blueprint-grid{grid-template-columns:repeat(3,1fr)}
-  .bd-cabinet-row{flex-wrap:wrap}
-  .bd-cabinet{min-width:40%}
-  .bd-puzzle-title{font-size:17px}
-  .bd-answer-title-sm{display:none}
-  .bd-splash-title{font-size:52px}
-  .dlg-bubble{font-size:11px}
-  .bd-vigenere-table{font-size:7px}
-  .bd-timer-display{font-size:10px}
-}
-@media(prefers-reduced-motion:reduce){
-  .bd-app::before{animation:none}
-  .bd-glitch{animation:none}
-  .dlg-active{transition:none}
-}
-`;
