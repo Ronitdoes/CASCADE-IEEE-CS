@@ -88,27 +88,64 @@ function CaesarScroll({ activeAnomaly, onSolve }: CaesarScrollProps) {
   const [shift, setShift] = useState(0);
   const [answer, setAnswer] = useState('');
   const [error, setError] = useState(false);
+  const [stage, setStage] = useState(0);
 
-  const ciphertext = "WKH IODPH LV IDGLQJ";
+  // Initialize random shifts for each stage (avoiding 3)
+  const [stageShifts] = useState<number[]>(() => {
+    return Array.from({ length: 4 }, () => {
+      let s;
+      do {
+        s = Math.floor(Math.random() * 25) + 1;
+      } while (s === 3);
+      return s;
+    });
+  });
+
+  const STAGES = [
+    { plaintext: "THE" },
+    { plaintext: "THE FLAME" },
+    { plaintext: "THE FLAME IS" },
+    { plaintext: "THE FLAME IS FADING" }
+  ];
+
+  const currentStage = STAGES[stage];
+  const targetShift = stageShifts[stage];
+
+  const encryptCaesar = (str: string, s: number) => {
+    return str.toUpperCase().split('').map(char => {
+      const code = char.charCodeAt(0);
+      if (code >= 65 && code <= 90) {
+        return String.fromCharCode(((code - 65 + s) % 26) + 65);
+      }
+      return char;
+    }).join('');
+  };
 
   const decryptCaesar = (str: string, s: number) => {
     return str.split('').map(char => {
       const code = char.charCodeAt(0);
       if (code >= 65 && code <= 90) {
-        // Upper case letters
         return String.fromCharCode(((code - 65 - s + 26) % 26) + 65);
       }
       return char;
     }).join('');
   };
 
+  const ciphertext = encryptCaesar(currentStage.plaintext, targetShift);
   const currentDecryptedText = decryptCaesar(ciphertext, shift);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (answer.toLowerCase().trim().replace(/\s+/g, ' ') === 'the flame is fading') {
+    const cleanAnswer = answer.toUpperCase().trim().replace(/\s+/g, ' ');
+    if (cleanAnswer === currentStage.plaintext) {
       setError(false);
-      onSolve();
+      setAnswer('');
+      if (stage < STAGES.length - 1) {
+        setStage(prev => prev + 1);
+        setShift(0); // reset slider for next stage
+      } else {
+        onSolve();
+      }
     } else {
       setError(true);
       setTimeout(() => setError(false), 2000);
@@ -117,19 +154,34 @@ function CaesarScroll({ activeAnomaly, onSolve }: CaesarScrollProps) {
 
   return (
     <div style={{ textAlign: 'left' }}>
-      <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '1rem' }}>
-        Archaeologists recovered an encrypted stone tablet containing a message encoded with a simple letter-shift. Decode the inscription exactly as intended.
-      </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, margin: 0, flex: 1 }}>
+          Archaeologists recovered an encrypted stone tablet containing a message encoded with a simple letter-shift. Decode the inscription exactly as intended.
+        </p>
+        <span style={{ 
+          fontSize: '0.75rem', 
+          fontFamily: 'monospace', 
+          background: 'rgba(212, 175, 55, 0.15)', 
+          color: 'var(--color-accent)', 
+          padding: '2px 8px', 
+          borderRadius: '4px',
+          border: '1px solid var(--color-accent-dim)',
+          marginLeft: '12px',
+          whiteSpace: 'nowrap'
+        }}>
+          Stage {stage + 1} / 4
+        </span>
+      </div>
 
-      <div className="caesar-ciphertext" style={{ textAlign: 'center' }}>
+      <div className="caesar-ciphertext" style={{ textAlign: 'center', minHeight: '36px' }}>
         {ciphertext}
       </div>
 
       <div className="caesar-slider-container">
         <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: '300px', fontSize: '0.8rem' }}>
           <span>Caesar Shift: +{shift}</span>
-          <span style={{ color: shift === 3 ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
-            {shift === 3 ? 'Align' : 'Shift'}
+          <span style={{ color: shift === targetShift ? 'var(--color-success)' : 'var(--color-text-muted)' }}>
+            {shift === targetShift ? 'Align' : 'Shift'}
           </span>
         </div>
         <input
@@ -155,8 +207,8 @@ function CaesarScroll({ activeAnomaly, onSolve }: CaesarScrollProps) {
         </div>
       </div>
 
-      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
-        Hint: "A shift of three letters backward reveals the warning."
+      <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1rem', fontWeight: 'bold' }}>
+        Hint: Use slider and find the word
       </p>
 
       <form onSubmit={handleSubmit} className="modal-form">
@@ -164,13 +216,14 @@ function CaesarScroll({ activeAnomaly, onSolve }: CaesarScrollProps) {
           type="text"
           value={answer}
           onChange={(e) => setAnswer(e.target.value)}
-          placeholder="ENTER TRANSLATED TABLET..."
+          placeholder={`ENTER DECRYPTED STAGE ${stage + 1}...`}
           className="basic-input"
           style={{ borderColor: error ? 'var(--color-danger)' : 'var(--color-accent)' }}
+          autoFocus
         />
         {error && <div className="error-text">Decryption Failed</div>}
         <button type="submit" className="basic-btn primary-btn" style={{ marginTop: '0.5rem' }}>
-          Decrypt Inscription
+          {stage < STAGES.length - 1 ? `Unlock Stage ${stage + 2}` : "Decrypt Tablet Inscription"}
         </button>
       </form>
     </div>
@@ -258,7 +311,8 @@ function ChronicleReconstruction({ activeAnomaly, onSolve }: ChronicleProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (answer.toLowerCase().trim().replace(/\s+/g, ' ') === 'light leads the worthy home') {
+    const cleanAnswer = answer.toLowerCase().trim().replace(/\s+/g, ' ');
+    if (cleanAnswer === 'light leads only the worthy home') {
       setError(false);
       onSolve();
     } else {
@@ -346,188 +400,280 @@ function ChronicleReconstruction({ activeAnomaly, onSolve }: ChronicleProps) {
 }
 
 // ==========================================
-// 4. EXCAVATION GRID PUZZLE
+// 4. MEMORY ROOM PUZZLE
 // ==========================================
-interface ExcavationGridProps {
+interface MemoryRoomProps {
   activeAnomaly: any;
   onSolve: () => void;
 }
 
-function ExcavationGrid({ activeAnomaly, onSolve }: ExcavationGridProps) {
-  const [stage, setStage] = useState(1); // 1 = Mixed Grid, 2 = Vigenere Cipher
-  const [base64Input, setBase64Input] = useState('');
-  const [vigenereKey, setVigenereKey] = useState('');
-  const [finalInput, setFinalInput] = useState('');
+const MEMORY_ITEMS = [
+  { id: 'moon', name: 'Moon', icon: () => (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" fill="#ffd700" stroke="#ffd700" />
+    </svg>
+  )},
+  { id: 'crow', name: 'Crow', icon: () => (
+    <svg width="48" height="48" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M16 24 C 20 20, 28 20, 32 26 C 36 22, 40 18, 48 24 C 44 26, 40 28, 38 32 C 34 36, 28 38, 22 36 L 14 42 L 18 34 C 14 32, 12 28, 16 24 Z" fill="#2c2c2c" stroke="#616161" />
+      <path d="M32 26 L 30 38 L 34 40 Z" fill="#2c2c2c" stroke="#616161" />
+      <path d="M48 24 L 56 26 L 46 28 Z" fill="#ffd700" stroke="#ffd700" />
+      <circle cx="44" cy="24" r="1.5" fill="#ff1744" />
+    </svg>
+  )},
+  { id: 'four', name: '4', icon: () => (
+    <div style={{ fontSize: '3rem', fontWeight: '900', color: 'var(--color-accent)', fontFamily: 'monospace', lineHeight: 1, textShadow: '0 0 12px rgba(212, 175, 55, 0.7)' }}>
+      4
+    </div>
+  )},
+  { id: 'eye', name: 'Eye', icon: () => (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" fill="rgba(5, 242, 146, 0.1)" stroke="#05f292" />
+      <circle cx="12" cy="12" r="3" fill="#05f292" />
+    </svg>
+  )},
+  { id: 'key', name: 'Key', icon: () => (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 1.5 1.5M15.5 7.5 14 6" fill="rgba(212, 175, 55, 0.15)" stroke="var(--color-accent)" />
+    </svg>
+  )},
+  { id: 'blood', name: 'Blood', icon: () => (
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-13-7-13S5 10.7 5 15a7 7 0 0 0 7 7Z" fill="#ff1744" stroke="#ff1744" />
+    </svg>
+  )}
+];
+
+const CORRECT_SEQUENCE = ['moon', 'crow', 'four', 'eye', 'key', 'blood'];
+
+function MemoryRoom({ activeAnomaly, onSolve }: MemoryRoomProps) {
+  const [gameState, setGameState] = useState<'intro' | 'playback' | 'input'>('intro');
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [shuffledOptions, setShuffledOptions] = useState<typeof MEMORY_ITEMS>([]);
+  const [userSelection, setUserSelection] = useState<string[]>([]);
   const [error, setError] = useState(false);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
 
-  // Mixed encoding grid representation (Base64 is SEtKUlhKWEJRVg==)
-  // Row order of characters:
-  // S, E, t, K, U, l, h, K, W, B, Q, V, g, =, =
-  const gridCells = [
-    { type: 'Binary', display: '01010011', decoded: 'S' },
-    { type: 'Hex', display: '45', decoded: 'E' },
-    { type: 'Decimal', display: '116', decoded: 't' },
-    { type: 'ASCII', display: 'K', decoded: 'K' },
-    { type: 'Hex', display: '55', decoded: 'U' },
-    { type: 'Binary', display: '01101100', decoded: 'l' },
-    { type: 'Decimal', display: '104', decoded: 'h' },
-    { type: 'ASCII', display: 'K', decoded: 'K' },
-    { type: 'Binary', display: '01010111', decoded: 'W' },
-    { type: 'Hex', display: '42', decoded: 'B' },
-    { type: 'Decimal', display: '81', decoded: 'Q' },
-    { type: 'ASCII', display: 'V', decoded: 'V' },
-    { type: 'Binary', display: '01100111', decoded: 'g' },
-    { type: 'Hex', display: '3D', decoded: '=' },
-    { type: 'Decimal', display: '61', decoded: '=' }
-  ];
+  useEffect(() => {
+    if (cooldownRemaining <= 0) return;
+    const interval = setInterval(() => {
+      setCooldownRemaining(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [cooldownRemaining]);
 
-  const handleStage1Submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (base64Input.trim() === 'SEtKUlhKWEJRVg==') {
-      setError(false);
-      setStage(2);
+  // Start playback
+  const startPlayback = () => {
+    setGameState('playback');
+    setPlaybackIndex(0);
+    setIsTransitioning(false);
+    setUserSelection([]);
+    setError(false);
+  };
+
+  // Playback timeline controller
+  useEffect(() => {
+    if (gameState !== 'playback') return;
+
+    if (playbackIndex < CORRECT_SEQUENCE.length) {
+      const displayTimer = setTimeout(() => {
+        setIsTransitioning(true);
+        const transitionTimer = setTimeout(() => {
+          setIsTransitioning(false);
+          setPlaybackIndex(prev => prev + 1);
+        }, 300);
+        return () => clearTimeout(transitionTimer);
+      }, 1500);
+      return () => clearTimeout(displayTimer);
     } else {
+      const shuffled = [...MEMORY_ITEMS].sort(() => Math.random() - 0.5);
+      setShuffledOptions(shuffled);
+      setGameState('input');
+    }
+  }, [gameState, playbackIndex]);
+
+  const handleOptionClick = (id: string) => {
+    if (error) return;
+    
+    const nextSelection = [...userSelection, id];
+    setUserSelection(nextSelection);
+
+    const isCorrectSoFar = nextSelection.every((selectedId, idx) => selectedId === CORRECT_SEQUENCE[idx]);
+
+    if (!isCorrectSoFar) {
       setError(true);
-      setTimeout(() => setError(false), 2000);
+      setCooldownRemaining(60);
+      setTimeout(() => {
+        setUserSelection([]);
+        setError(false);
+      }, 1200);
+    } else if (nextSelection.length === CORRECT_SEQUENCE.length) {
+      setTimeout(onSolve, 1000);
     }
   };
 
-  const decryptVigenere = (cipher: string, key: string) => {
-    if (!key) return cipher;
-    let out = '';
-    let keyIdx = 0;
-    const cleanKey = key.toUpperCase().replace(/[^A-Z]/g, '');
-    if (cleanKey.length === 0) return cipher;
-
-    for (let i = 0; i < cipher.length; i++) {
-      const code = cipher.charCodeAt(i);
-      if (code >= 65 && code <= 90) {
-        const kCode = cleanKey.charCodeAt(keyIdx % cleanKey.length) - 65;
-        const decryptedChar = String.fromCharCode(((code - 65 - kCode + 26) % 26) + 65);
-        out += decryptedChar;
-        keyIdx++;
-      } else {
-        out += cipher[i];
-      }
-    }
-    return out;
-  };
-
-  const vigenereCiphertext = "HKJRXJXBQV";
-  const vigenereDecrypted = decryptVigenere(vigenereCiphertext, vigenereKey);
-
-  const handleStage2Submit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanKey = vigenereKey.toUpperCase().trim();
-    const cleanAnswer = finalInput.toUpperCase().trim().replace(/\s+/g, ' ');
-
-    if (cleanKey === 'EMBER' && cleanAnswer === 'DYING FLAME') {
-      setError(false);
-      onSolve();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    }
-  };
+  const currentPlaybackItem = MEMORY_ITEMS.find(item => item.id === CORRECT_SEQUENCE[playbackIndex]);
 
   return (
     <div style={{ textAlign: 'left' }}>
-      <div className="stage-indicator">
-        <span className={stage === 1 ? 'active' : ''}>[STAGE 1: MIXED DECRYPTION]</span>
-        <span className={stage === 2 ? 'active' : ''}>[STAGE 2: CIPHERTEXT RECOVERY]</span>
-      </div>
-
-      {stage === 1 && (
-        <div>
-          <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '0.8rem' }}>
-            The grid contains cells encoded in different formats. Decrypt each cell sequentially from top-left (left-to-right) to form the combined key code.
+      {gameState === 'intro' && (
+        <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+          <p style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--color-accent)', marginBottom: '0.5rem' }}>
+            Memory Room
           </p>
-
-          <div className="excavation-grid-visual">
-            <div className="excavation-cell header">#</div>
-            <div className="excavation-cell header">Type</div>
-            <div className="excavation-cell header">Value</div>
-            <div className="excavation-cell header" style={{ gridColumn: 'span 2' }}>Decoded</div>
-
-            {gridCells.map((cell, idx) => (
-              <React.Fragment key={idx}>
-                <div className="excavation-cell" style={{ color: 'var(--color-accent)' }}>{idx + 1}</div>
-                <div className="excavation-cell">{cell.type}</div>
-                <div className="excavation-cell" style={{ fontFamily: 'monospace' }}>{cell.display}</div>
-                <div className="excavation-cell" style={{ gridColumn: 'span 2', color: 'var(--color-success)', fontWeight: 'bold' }}>
-                  {base64Input.length > idx && base64Input[idx] === cell.decoded ? cell.decoded : '?'}
-                </div>
-              </React.Fragment>
-            ))}
-          </div>
-
-          <form onSubmit={handleStage1Submit} className="modal-form" style={{ marginTop: '1rem' }}>
-            <input
-              type="text"
-              value={base64Input}
-              onChange={(e) => setBase64Input(e.target.value)}
-              placeholder="Combine decoded characters..."
-              className="basic-input"
-              style={{ borderColor: error ? 'var(--color-danger)' : 'var(--color-accent)' }}
-            />
-            {error && <div className="error-text">Check sequence encoding (Base64 padding required)</div>}
-            <button type="submit" className="basic-btn primary-btn">
-              Validate Stage 1
-            </button>
-          </form>
+          <p style={{ fontSize: '0.9rem', opacity: 0.85, marginBottom: '1.5rem', fontStyle: 'italic' }}>
+            Nothing is written down. You must walk through the sequence of six rooms, remember what each room holds, and reconstruct the path at the end.
+          </p>
+          <button 
+            type="button" 
+            onClick={startPlayback} 
+            className="basic-btn primary-btn"
+            style={{ width: '100%', maxWidth: '240px' }}
+          >
+            Begin Memory Walk
+          </button>
         </div>
       )}
 
-      {stage === 2 && (
-        <div>
-          <div style={{ background: 'rgba(16, 185, 129, 0.1)', padding: '10px', border: '1px solid var(--color-success)', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.85rem' }}>
-            ✓ Stage 1 Complete. Base64 decoded output: <span style={{ color: 'var(--color-success)', fontFamily: 'monospace', fontWeight: 'bold' }}>HKJRXJXBQV</span>
+      {gameState === 'playback' && currentPlaybackItem && (
+        <div style={{ textAlign: 'center', margin: '1.5rem 0' }}>
+          <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '1rem' }}>
+            ROOM {playbackIndex + 1} / 6
+          </p>
+          <div 
+            style={{
+              width: '240px',
+              height: '240px',
+              margin: '0 auto',
+              background: '#020101',
+              border: '2px solid var(--wall-stroke)',
+              borderRadius: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '1rem',
+              opacity: isTransitioning ? 0 : 1,
+              transition: 'opacity 0.25s ease-in-out',
+              boxShadow: 'inset 0 0 30px rgba(0,0,0,0.95)'
+            }}
+          >
+            {currentPlaybackItem.icon()}
+            <span style={{ fontSize: '1.2rem', color: 'var(--color-text)', letterSpacing: '2px', fontWeight: 'bold', textTransform: 'uppercase' }}>
+              {currentPlaybackItem.name}
+            </span>
           </div>
+        </div>
+      )}
 
-          <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85 }}>
-            Decrypted base64 yields a ciphertext encrypted using a Vigenere keyword cipher. Deduce the keyword from your exploration of other sectors, then enter both the keyword and the plaintext answer.
+      {gameState === 'input' && (
+        <div>
+          <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '1rem', textAlign: 'center' }}>
+            Reconstruct the sequence of rooms in the order you saw them.
           </p>
 
-          <div style={{
-            background: 'rgba(0,0,0,0.5)', border: '1px dashed var(--color-accent)', padding: '10px 14px', borderRadius: '4px', marginBottom: '1rem'
-          }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Vigenere Ciphertext:</div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', letterSpacing: '3px', margin: '4px 0' }}>{vigenereCiphertext}</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Decrypted Output:</div>
-            <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--color-success)', letterSpacing: '3px', margin: '4px 0' }}>
-              {vigenereDecrypted}
-            </div>
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '1.5rem' }}>
+            {CORRECT_SEQUENCE.map((_, idx) => {
+              const selectedId = userSelection[idx];
+              const item = selectedId ? MEMORY_ITEMS.find(i => i.id === selectedId) : null;
+              return (
+                <div 
+                  key={idx}
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    border: error 
+                      ? '1px solid var(--color-danger)' 
+                      : item 
+                        ? '1px solid var(--color-success)' 
+                        : '1px dashed var(--wall-stroke)',
+                    background: error 
+                      ? 'rgba(239, 68, 68, 0.1)' 
+                      : item 
+                        ? 'rgba(16, 185, 129, 0.1)' 
+                        : 'rgba(0,0,0,0.4)',
+                    borderRadius: '4px',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    fontSize: '0.7rem',
+                    color: error ? 'var(--color-danger)' : 'var(--color-success)',
+                    fontWeight: 'bold',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {item ? item.name : '?'}
+                </div>
+              );
+            })}
           </div>
 
-          <form onSubmit={handleStage2Submit} className="modal-form">
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                value={vigenereKey}
-                onChange={(e) => setVigenereKey(e.target.value)}
-                placeholder="KEYWORD (5 chars)"
-                className="basic-input"
-                style={{ flex: 1 }}
-              />
-              <input
-                type="text"
-                value={finalInput}
-                onChange={(e) => setFinalInput(e.target.value)}
-                placeholder="PLAINTEXT..."
-                className="basic-input"
-                style={{ flex: 2 }}
-              />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '1.5rem' }}>
+            {shuffledOptions.map(option => {
+              const isAlreadySelected = userSelection.includes(option.id);
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  disabled={isAlreadySelected || error}
+                  onClick={() => handleOptionClick(option.id)}
+                  className="basic-btn"
+                  style={{
+                    padding: '12px 6px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '6px',
+                    border: '1px solid var(--wall-stroke)',
+                    background: isAlreadySelected ? 'rgba(0,0,0,0.6)' : 'rgba(20, 10, 8, 0.5)',
+                    opacity: isAlreadySelected ? 0.3 : 1,
+                    cursor: isAlreadySelected ? 'default' : 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {option.icon()}
+                  <span style={{ fontSize: '0.75rem', color: isAlreadySelected ? 'var(--color-text-muted)' : 'var(--color-text)' }}>
+                    {option.name}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div style={{ 
+              color: 'var(--color-danger)', 
+              fontSize: '0.85rem', 
+              fontWeight: 'bold', 
+              textAlign: 'center', 
+              marginBottom: '1rem',
+              textTransform: 'uppercase',
+              letterSpacing: '1px'
+            }}>
+              Incorrect sequence! The timeline resets.
             </div>
-            {error && <div className="error-text">Keyword or Plaintext decryption incorrect</div>}
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button type="button" onClick={() => setStage(1)} className="basic-btn secondary-btn" style={{ flex: 1 }}>
-                Back
-              </button>
-              <button type="submit" className="basic-btn primary-btn" style={{ flex: 2 }}>
-                Unlock Grid Node
-              </button>
-            </div>
-          </form>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button 
+              type="button" 
+              onClick={startPlayback} 
+              disabled={cooldownRemaining > 0 || userSelection.length === 0}
+              className="basic-btn secondary-btn"
+              style={{ 
+                fontSize: '0.8rem', 
+                padding: '6px 16px',
+                opacity: (cooldownRemaining > 0 || userSelection.length === 0) ? 0.4 : 1,
+                cursor: (cooldownRemaining > 0 || userSelection.length === 0) ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {cooldownRemaining > 0 
+                ? `Replay Blocked (${cooldownRemaining}s)` 
+                : "Replay Memory Walk"
+              }
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -687,264 +833,266 @@ function TempleFloor({ activeAnomaly, onSolve }: TempleFloorProps) {
 }
 
 // ==========================================
-// 6. CATHEDRAL ORGAN PUZZLE
+// 6. CANDLE PIANO PUZZLE
 // ==========================================
-interface CathedralOrganProps {
+interface CandlePianoProps {
   activeAnomaly: any;
   onSolve: () => void;
 }
 
-function CathedralOrgan({ activeAnomaly, onSolve }: CathedralOrganProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [answer, setAnswer] = useState('');
-  const [error, setError] = useState(false);
-  const [showMorseKey, setShowMorseKey] = useState(false);
+const TONES = [261.63, 293.66, 329.63, 392.00, 440.00]; // C4, D4, E4, G4, A4
+const MELODY = [1, 3, 0, 4, 2]; // 0-indexed keys (2, 4, 1, 5, 3)
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationRef = useRef<number | null>(null);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const synthNodesRef = useRef<any[]>([]);
+function CandlePiano({ activeAnomaly, onSolve }: CandlePianoProps) {
+  const [isPlayingClue, setIsPlayingClue] = useState(false);
+  const [activeClueIndex, setActiveClueIndex] = useState<number | null>(null);
+  const [userInputs, setUserInputs] = useState<number[]>([]);
+  const [errorState, setErrorState] = useState(false);
+  const [activeKey, setActiveKey] = useState<number | null>(null);
 
-  // Morse data: THE FIRST FLAME
-  // - .... . / ..-. .. .-. ... - / ..-. .-.. .- -- .
-  const morseCode = [
-    { char: 'T', morse: '-' }, { char: 'H', morse: '....' }, { char: 'E', morse: '.' },
-    { char: '/', morse: '/' },
-    { char: 'F', morse: '..-.' }, { char: 'I', morse: '..' }, { char: 'R', morse: '.-.' }, { char: 'S', morse: '...' }, { char: 'T', morse: '-' },
-    { char: '/', morse: '/' },
-    { char: 'F', morse: '..-.' }, { char: 'L', morse: '.-..' }, { char: 'A', morse: '.-' }, { char: 'M', morse: '--' }, { char: 'E', morse: '.' }
-  ];
-
-  // Visual spectrogram animation loop
-  const drawSpectrogram = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Shift canvas content to the left
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    if (tempCtx) {
-      tempCtx.drawImage(canvas, 0, 0);
-      ctx.fillStyle = '#020101';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(tempCanvas, -1.5, 0); // scroll speed
-    }
-
-    // Draw the right edge background noise
-    ctx.fillStyle = 'rgba(255, 78, 32, 0.05)';
-    ctx.fillRect(canvas.width - 2, 0, 2, canvas.height);
-
-    // Draw Morse lines dynamically on the right edge based on timing
-    if (isPlaying) {
-      const time = Date.now() / 1000;
-      // We will map characters of THE FIRST FLAME to frequencies
-      // For visual simplicity, draw scrolling dots and dashes at fixed heights
-      const beepState = Math.sin(time * 8) > 0; // simple beeper mock
-      
-      // Draw wind base frequency (noise)
-      for (let y = canvas.height - 10; y < canvas.height; y++) {
-        ctx.fillStyle = `rgba(255, 78, 32, ${Math.random() * 0.15})`;
-        ctx.fillRect(canvas.width - 2, y, 2, 1);
-      }
-
-      // Draw Morse line at Y=35 (representing 1800Hz beep)
-      if (beepState) {
-        ctx.fillStyle = '#e6b800';
-        ctx.shadowColor = '#d4af37';
-        ctx.shadowBlur = 4;
-        ctx.fillRect(canvas.width - 2, 35, 2, 3);
-        ctx.shadowBlur = 0; // reset
-      }
-    }
-
-    animationRef.current = requestAnimationFrame(drawSpectrogram);
-  };
-
-  useEffect(() => {
-    drawSpectrogram();
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      stopAudio();
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying]);
-
-  const startAudio = () => {
+  // Play audio synthesizer tone
+  const playNote = (index: number) => {
     try {
-      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtxClass();
-      audioCtxRef.current = ctx;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-      // 1. Wind hum generator
-      const oscWind = ctx.createOscillator();
-      const filterWind = ctx.createBiquadFilter();
-      const gainWind = ctx.createGain();
-      
-      oscWind.type = 'sawtooth';
-      oscWind.frequency.value = 55; // low hum
-      filterWind.type = 'lowpass';
-      filterWind.frequency.value = 140;
-      gainWind.gain.value = 0.25;
+      osc.type = 'triangle'; // warmer piano-like sound
+      osc.frequency.value = TONES[index];
 
-      oscWind.connect(filterWind);
-      filterWind.connect(gainWind);
-      gainWind.connect(ctx.destination);
-      oscWind.start();
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.0);
 
-      // 2. Morse Beep scheduler
-      const morseBeepOsc = ctx.createOscillator();
-      const gainBeep = ctx.createGain();
-      morseBeepOsc.type = 'sine';
-      morseBeepOsc.frequency.value = 1600; // Morse frequency
-      gainBeep.gain.value = 0; // silent initially
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-      morseBeepOsc.connect(gainBeep);
-      gainBeep.connect(ctx.destination);
-      morseBeepOsc.start();
-
-      // Schedule the Morse code beeps for "THE FIRST FLAME"
-      // Dot = 0.12s, Dash = 0.36s, Space = 0.12s, WordSpace = 0.84s
-      let time = ctx.currentTime + 0.5;
-      
-      const playBeeps = () => {
-        morseCode.forEach(item => {
-          if (item.char === '/') {
-            time += 0.6; // word spacing
-          } else {
-            const symbols = item.morse.split('');
-            symbols.forEach(sym => {
-              const dur = sym === '.' ? 0.12 : 0.36;
-              // beep on
-              gainBeep.gain.setValueAtTime(0.08, time);
-              // beep off
-              gainBeep.gain.setValueAtTime(0, time + dur);
-              time += dur + 0.12; // inter-symbol spacing
-            });
-            time += 0.24; // inter-character spacing
-          }
-        });
-      };
-
-      // Loop Morse code beeps
-      playBeeps();
-      const interval = setInterval(playBeeps, 12000);
-
-      synthNodesRef.current = [oscWind, morseBeepOsc, gainBeep, interval];
-      setIsPlaying(true);
+      osc.start();
+      osc.stop(ctx.currentTime + 1.0);
     } catch (e) {
-      console.error("Audio API initialization failed: ", e);
-      setIsPlaying(true); // fall back to visual only
+      console.warn(e);
     }
   };
 
-  const stopAudio = () => {
-    if (synthNodesRef.current.length > 0) {
-      const [osc1, osc2, gain, interval] = synthNodesRef.current;
-      clearInterval(interval);
-      try {
-        osc1.stop();
-        osc2.stop();
-      } catch (e) {}
-      synthNodesRef.current = [];
-    }
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-    setIsPlaying(false);
+  // Playback the candle melody clue
+  const playClue = () => {
+    if (isPlayingClue || errorState) return;
+    setIsPlayingClue(true);
+    setUserInputs([]);
+    
+    let step = 0;
+    const interval = setInterval(() => {
+      if (step < MELODY.length) {
+        const keyIndex = MELODY[step];
+        setActiveClueIndex(keyIndex);
+        playNote(keyIndex);
+        step++;
+      } else {
+        clearInterval(interval);
+        setActiveClueIndex(null);
+        setIsPlayingClue(false);
+      }
+    }, 1200);
   };
 
-  const handlePlayToggle = () => {
-    if (isPlaying) {
-      stopAudio();
-    } else {
-      startAudio();
-    }
-  };
+  const handleKeyPress = (keyIndex: number) => {
+    if (isPlayingClue || errorState) return;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (answer.toLowerCase().trim() === 'the first flame') {
-      stopAudio();
-      onSolve();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
+    setActiveKey(keyIndex);
+    playNote(keyIndex);
+    setTimeout(() => setActiveKey(null), 300);
+
+    const nextInputs = [...userInputs, keyIndex];
+    setUserInputs(nextInputs);
+
+    // Verify input sequence
+    const isCorrectSoFar = nextInputs.every((val, idx) => val === MELODY[idx]);
+
+    if (!isCorrectSoFar) {
+      setErrorState(true);
+      setTimeout(() => {
+        setUserInputs([]);
+        setErrorState(false);
+      }, 1500);
+    } else if (nextInputs.length === MELODY.length) {
+      setTimeout(onSolve, 1000);
     }
   };
 
   return (
-    <div style={{ textAlign: 'left' }}>
+    <div style={{ textAlign: 'center' }}>
       <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '1rem' }}>
-        The ancient organ terminal emits an acoustic frequency signal. Run the digital spectrogram to identify the hidden Morse sequence.
+        An old piano stands in the shadows. Watch the flickering candle flames grow tall in sequence to learn the melody, then play the correct keys.
       </p>
 
-      <div className="organ-controls">
-        <canvas ref={canvasRef} width="300" height="80" className="spectrogram-canvas" />
-        
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button type="button" onClick={handlePlayToggle} className="basic-btn primary-btn" style={{ minWidth: '150px' }}>
-            {isPlaying ? (
-              <>
-                <Square size={16} style={{ marginRight: '6px' }} /> Stop Analyzer
-              </>
-            ) : (
-              <>
-                <Play size={16} style={{ marginRight: '6px' }} /> Start Analyzer
-              </>
-            )}
-          </button>
+      {/* Candles Row Container */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-around', 
+        alignItems: 'flex-end', 
+        height: '140px', 
+        background: '#040202',
+        border: '1px solid var(--wall-stroke)',
+        borderRadius: '6px',
+        padding: '10px 20px',
+        marginBottom: '1.5rem',
+        boxShadow: 'inset 0 0 20px rgba(0,0,0,0.95)'
+      }}>
+        {TONES.map((_, idx) => {
+          const isClueTall = activeClueIndex === idx;
+          const isPressedTall = activeKey === idx;
+          const isTall = isClueTall || isPressedTall;
 
-          <a href="/cathedral.wav" download="cathedral.wav" className="basic-btn secondary-btn" style={{ textDecoration: 'none' }}>
-            Download WAV
-          </a>
+          return (
+            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {/* Candle Flame SVG */}
+              <svg width="40" height="90" viewBox="0 0 40 90">
+                <defs>
+                  <radialGradient id={`glow-${idx}`} cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor={errorState ? "#ff1744" : "#ff9800"} stopOpacity="0.8" />
+                    <stop offset="50%" stopColor={errorState ? "#b71c1c" : "#e65100"} stopOpacity="0.3" />
+                    <stop offset="100%" stopColor="#000" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+
+                {/* Glow effect */}
+                <circle 
+                  cx="20" 
+                  cy={isTall ? "20" : "40"} 
+                  r={isTall ? "20" : "12"} 
+                  fill={`url(#glow-${idx})`} 
+                  opacity={isTall ? "0.9" : "0.5"}
+                  style={{ transition: 'all 0.25s ease' }}
+                />
+
+                {/* Flickering Flame */}
+                <path 
+                  d={isTall 
+                    ? "M 20,5 Q 12,20 20,40 Q 28,20 20,5 Z" 
+                    : "M 20,25 Q 15,33 20,43 Q 25,33 20,25 Z" 
+                  }
+                  fill={errorState ? "#ff1744" : "#ffb74d"}
+                  stroke={errorState ? "#b71c1c" : "#f57c00"}
+                  strokeWidth="1"
+                  style={{ transition: 'all 0.2s ease-in-out' }}
+                >
+                  <animate 
+                    attributeName="d" 
+                    values={isTall
+                      ? `
+                        M 20,5 Q 12,20 20,40 Q 28,20 20,5 Z;
+                        M 20,8 Q 14,21 19,40 Q 26,21 20,8 Z;
+                        M 20,5 Q 12,20 20,40 Q 28,20 20,5 Z
+                      `
+                      : `
+                        M 20,25 Q 15,33 20,43 Q 25,33 20,25 Z;
+                        M 20,27 Q 16,34 19,43 Q 24,34 20,27 Z;
+                        M 20,25 Q 15,33 20,43 Q 25,33 20,25 Z
+                      `
+                    } 
+                    dur="0.25s" 
+                    repeatCount="indefinite" 
+                  />
+                </path>
+
+                {/* Wick */}
+                <line x1="20" y1="43" x2="20" y2="48" stroke="#333" strokeWidth="1.5" />
+
+                {/* Candle Body */}
+                <rect x="16" y="48" width="8" height="35" fill="#f5ebe0" rx="1" />
+                
+                {/* Wax drip */}
+                <path d="M 16,52 Q 18,55 18,52 Q 22,50 20,54" fill="none" stroke="#e3d5ca" strokeWidth="1" />
+              </svg>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Input tracker flames */}
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '1.5rem' }}>
+        {MELODY.map((_, idx) => {
+          const isSelected = userInputs.length > idx;
+          return (
+            <div 
+              key={idx}
+              style={{
+                width: '16px',
+                height: '24px',
+                borderRadius: '50% 50% 50% 50% / 60% 60% 40% 40%',
+                background: errorState 
+                  ? 'var(--color-danger)' 
+                  : isSelected 
+                    ? 'var(--color-success)' 
+                    : 'transparent',
+                border: errorState 
+                  ? '1px solid var(--color-danger)' 
+                  : isSelected 
+                    ? '1px solid var(--color-success)' 
+                    : '1px solid var(--wall-stroke)',
+                transition: 'all 0.25s ease',
+                boxShadow: isSelected && !errorState ? '0 0 6px var(--color-success)' : 'none'
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* Piano Keys Grid */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        background: '#1a100c', 
+        padding: '16px 20px 24px 20px', 
+        border: '2px solid var(--wall-stroke)',
+        borderRadius: '8px',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.8)',
+        maxWidth: '360px',
+        margin: '0 auto 1.5rem auto'
+      }}>
+        <div style={{ display: 'flex', background: '#000', padding: '4px', borderRadius: '4px', gap: '3px', width: '100%' }}>
+          {TONES.map((_, idx) => {
+            const isPressed = activeKey === idx;
+            return (
+              <button
+                key={idx}
+                type="button"
+                disabled={isPlayingClue || errorState}
+                onClick={() => handleKeyPress(idx)}
+                style={{
+                  flex: 1,
+                  height: '140px',
+                  background: isPressed 
+                    ? '#d4c7b8' 
+                    : 'linear-gradient(to bottom, #ffffff 0%, #fdfcf7 85%, #e8e6dd 100%)',
+                  border: 'none',
+                  borderRadius: '0 0 4px 4px',
+                  cursor: isPlayingClue || errorState ? 'default' : 'pointer',
+                  outline: 'none',
+                  boxShadow: isPressed 
+                    ? 'inset 0 4px 8px rgba(0,0,0,0.6)' 
+                    : '0 4px 2px rgba(0,0,0,0.3)',
+                  transform: isPressed ? 'translateY(2px)' : 'none',
+                  transition: 'all 0.1s ease',
+                  position: 'relative'
+                }}
+              />
+            );
+          })}
         </div>
       </div>
 
-      <div style={{ marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
         <button
           type="button"
-          onClick={() => setShowMorseKey(!showMorseKey)}
-          style={{ background: 'none', border: 'none', color: 'var(--color-accent)', cursor: 'pointer', fontSize: '0.8rem', padding: 0 }}
+          onClick={playClue}
+          disabled={isPlayingClue || errorState}
+          className="basic-btn primary-btn"
+          style={{ width: '100%', maxWidth: '200px' }}
         >
-          {showMorseKey ? 'Hide Morse Code Cheat Sheet' : 'Show Morse Code Cheat Sheet'}
+          {isPlayingClue ? "Playing Melody..." : "Watch Candles"}
         </button>
-
-        {showMorseKey && (
-          <div style={{
-            background: 'rgba(20, 10, 8, 0.6)', border: '1px solid var(--wall-stroke)',
-            padding: '10px', borderRadius: '4px', marginTop: '6px', fontSize: '0.75rem',
-            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', fontFamily: 'monospace'
-          }}>
-            <span>A: .-</span> <span>B: -...</span> <span>C: -.-.</span> <span>D: -..</span>
-            <span>E: .</span> <span>F: ..-.</span> <span>G: --.</span> <span>H: ....</span>
-            <span>I: ..</span> <span>J: .---</span> <span>K: -.-</span> <span>L: .-..</span>
-            <span>M: --</span> <span>N: -.</span> <span>O: ---</span> <span>P: .--.</span>
-            <span>Q: --.-</span> <span>R: .-.</span> <span>S: ...</span> <span>T: -</span>
-            <span>U: ..-</span> <span>V: ...-</span> <span>W: .--</span> <span>X: -..-</span>
-            <span>Y: -.--</span> <span>Z: --..</span>
-          </div>
-        )}
       </div>
-
-      <form onSubmit={handleSubmit} className="modal-form">
-        <input
-          type="text"
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          placeholder="ENTER ACOUSTIC DECRYPTION KEY..."
-          className="basic-input"
-          style={{ borderColor: error ? 'var(--color-danger)' : 'var(--color-accent)' }}
-        />
-        {error && <div className="error-text">Frequencies don't align. Try again.</div>}
-        <button type="submit" className="basic-btn primary-btn" style={{ marginTop: '0.5rem' }}>
-          Unlock Cathedral Organ
-        </button>
-      </form>
     </div>
   );
 }
@@ -952,208 +1100,163 @@ function CathedralOrgan({ activeAnomaly, onSolve }: CathedralOrganProps) {
 // ==========================================
 // 7. IMPOSSIBLE MAP PUZZLE
 // ==========================================
-interface ImpossibleMapProps {
+interface FlameImagePuzzleProps {
   activeAnomaly: any;
   onSolve: () => void;
 }
 
-interface MapPanel {
-  id: number;
-  rotation: number; // 0, 90, 180, 270
-  flippedH: boolean;
-  flippedV: boolean;
-  letter: string;
-  paths: React.ReactNode; // SVG path elements
-}
+function FlameImagePuzzle({ activeAnomaly, onSolve }: FlameImagePuzzleProps) {
+  const [tiles, setTiles] = useState<number[]>([]);
+  const [selectedTile, setSelectedTile] = useState<number | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
-function ImpossibleMap({ activeAnomaly, onSolve }: ImpossibleMapProps) {
-  const [panels, setPanels] = useState<MapPanel[]>([
-    {
-      id: 0, // Top-Left
-      rotation: 90,
-      flippedH: true,
-      flippedV: false,
-      letter: "A",
-      paths: (
-        <>
-          <path d="M 0 75 Q 35 75 75 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <path d="M 75 75 Q 75 115 75 150" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <circle cx="75" cy="75" r="5" fill="#fff" />
-          <text x="75" y="70" fill="#fff" fontSize="10" textAnchor="middle">A</text>
-        </>
-      )
-    },
-    {
-      id: 1, // Top-Right
-      rotation: 180,
-      flippedH: false,
-      flippedV: true,
-      letter: "U",
-      paths: (
-        <>
-          <path d="M 0 75 Q 75 75 75 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <path d="M 75 75 Q 115 75 150 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <circle cx="75" cy="75" r="5" fill="#fff" />
-          <text x="75" y="70" fill="#fff" fontSize="10" textAnchor="middle">U</text>
-        </>
-      )
-    },
-    {
-      id: 2, // Bottom-Left
-      rotation: 270,
-      flippedH: false,
-      flippedV: false,
-      letter: "R",
-      paths: (
-        <>
-          <path d="M 75 0 Q 75 75 75 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <path d="M 75 75 Q 75 115 75 150" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <circle cx="75" cy="75" r="5" fill="#fff" />
-          <text x="75" y="70" fill="#fff" fontSize="10" textAnchor="middle">R</text>
-        </>
-      )
-    },
-    {
-      id: 3, // Bottom-Right
-      rotation: 0,
-      flippedH: false,
-      flippedV: false,
-      letter: "E",
-      paths: (
-        <>
-          <path d="M 75 0 Q 75 75 75 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <path d="M 75 75 Q 115 75 150 75" stroke="#d4af37" strokeWidth="2.5" fill="none" />
-          <circle cx="75" cy="75" r="5" fill="#fff" />
-          <text x="75" y="70" fill="#fff" fontSize="10" textAnchor="middle">E</text>
-        </>
-      )
-    }
-  ]);
-  const [answer, setAnswer] = useState('');
-  const [error, setError] = useState(false);
+  // Initialize and shuffle
+  useEffect(() => {
+    const initialTiles = Array.from({ length: 16 }, (_, i) => i);
+    let shuffled = [...initialTiles];
+    do {
+      shuffled = [...initialTiles].sort(() => Math.random() - 0.5);
+    } while (shuffled.every((val, idx) => val === idx));
 
-  const rotatePanel = (id: number) => {
-    setPanels(prev => prev.map(p => p.id === id ? { ...p, rotation: (p.rotation + 90) % 360 } : p));
-  };
+    setTiles(shuffled);
+  }, []);
 
-  const flipPanelH = (id: number) => {
-    setPanels(prev => prev.map(p => p.id === id ? { ...p, flippedH: !p.flippedH } : p));
-  };
-
-  const flipPanelV = (id: number) => {
-    setPanels(prev => prev.map(p => p.id === id ? { ...p, flippedV: !p.flippedV } : p));
-  };
-
-  // Correct states:
-  // Panel 0 (Top-Left): rotation=0, flippedH=false, flippedV=false
-  // Panel 1 (Top-Right): rotation=0, flippedH=false, flippedV=false
-  // Panel 2 (Bottom-Left): rotation=0, flippedH=false, flippedV=false
-  // Panel 3 (Bottom-Right): rotation=0, flippedH=false, flippedV=false
-  const isAligned = panels.every(p => p.rotation === 0 && !p.flippedH && !p.flippedV);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (answer.toLowerCase().trim() === 'aurelis') {
-      onSolve();
+  const handleTileClick = (index: number) => {
+    if (selectedTile === null) {
+      setSelectedTile(index);
     } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
+      if (selectedTile !== index) {
+        setTiles(prev => {
+          const nextTiles = [...prev];
+          const temp = nextTiles[selectedTile];
+          nextTiles[selectedTile] = nextTiles[index];
+          nextTiles[index] = temp;
+
+          const isSolved = nextTiles.every((val, idx) => val === idx);
+          if (isSolved) {
+            setTimeout(onSolve, 1000);
+          }
+
+          return nextTiles;
+        });
+      }
+      setSelectedTile(null);
     }
   };
+
+  const isSolved = tiles.length === 16 && tiles.every((val, idx) => val === idx);
 
   return (
     <div style={{ textAlign: 'left' }}>
-      <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '0.5rem' }}>
-        The sector map appears disjointed. Rotate and fold (flip) the quadrants to align the ancient highways. When they link, follow the road to spell the hidden city.
+      <p className="question-text" style={{ fontSize: '0.85rem', opacity: 0.85, marginBottom: '0.8rem' }}>
+        The flame shrine has fractured. Rearrange the 16 pieces by clicking any two tiles to swap their positions. Restore the image to stoke the flame.
       </p>
 
-      <div className="impossible-map-grid">
-        {panels.map(panel => {
-          let transformStr = `rotate(${panel.rotation}deg)`;
-          if (panel.flippedH) transformStr += ` scaleX(-1)`;
-          if (panel.flippedV) transformStr += ` scaleY(-1)`;
+      <div 
+        style={{ 
+          position: 'relative',
+          width: '320px', 
+          height: '320px', 
+          margin: '0 auto 1rem auto',
+          border: isSolved ? '2px solid var(--color-success)' : '2px solid var(--wall-stroke)',
+          boxShadow: isSolved ? '0 0 15px var(--color-success)' : 'none',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateRows: 'repeat(4, 1fr)',
+          background: '#050202',
+          overflow: 'hidden'
+        }}
+      >
+        {tiles.map((tileValue, currentIndex) => {
+          const originalRow = Math.floor(tileValue / 4);
+          const originalCol = tileValue % 4;
+
+          const xPercent = (originalCol / 3) * 100;
+          const yPercent = (originalRow / 3) * 100;
+
+          const isSelected = selectedTile === currentIndex;
 
           return (
-            <div key={panel.id} className="map-panel-container">
-              <div className="map-panel-inner" style={{ transform: transformStr }}>
-                <svg width="100%" height="100%" style={{ background: '#090404', border: '1px solid #361714' }}>
-                  {/* Grid markings */}
-                  <line x1="0" y1="75" x2="150" y2="75" stroke="#1d0a08" strokeWidth="0.5" strokeDasharray="2 2" />
-                  <line x1="75" y1="0" x2="75" y2="150" stroke="#1d0a08" strokeWidth="0.5" strokeDasharray="2 2" />
-                  
-                  {/* Road paths */}
-                  {panel.paths}
-                </svg>
-              </div>
-              
-              {/* Quadrant Controls Overlay */}
-              <div style={{
-                position: 'absolute', bottom: '4px', left: '4px', display: 'flex', gap: '2px', zIndex: 10
-              }}>
-                <button
-                  type="button"
-                  onClick={() => rotatePanel(panel.id)}
-                  style={{ background: 'rgba(0,0,0,0.8)', border: '1px solid #5a2822', color: '#fff', fontSize: '9px', padding: '2px 4px', cursor: 'pointer' }}
-                  title="Rotate 90°"
-                >
-                  <RotateCw size={10} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => flipPanelH(panel.id)}
-                  style={{ background: 'rgba(0,0,0,0.8)', border: '1px solid #5a2822', color: '#fff', fontSize: '9px', padding: '2px 4px', cursor: 'pointer' }}
-                  title="Flip Horizontally"
-                >
-                  ↔
-                </button>
-                <button
-                  type="button"
-                  onClick={() => flipPanelV(panel.id)}
-                  style={{ background: 'rgba(0,0,0,0.8)', border: '1px solid #5a2822', color: '#fff', fontSize: '9px', padding: '2px 4px', cursor: 'pointer' }}
-                  title="Flip Vertically"
-                >
-                  ↕
-                </button>
-              </div>
-            </div>
+            <div
+              key={currentIndex}
+              onClick={() => !isSolved && handleTileClick(currentIndex)}
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundImage: 'url("/case-03/mystical-flame.jpg")',
+                backgroundSize: '400% 400%',
+                backgroundPosition: `${xPercent}% ${yPercent}%`,
+                border: isSelected 
+                  ? '2px solid var(--color-success)' 
+                  : isSolved 
+                    ? 'none' 
+                    : '1px solid rgba(92, 74, 20, 0.4)',
+                boxShadow: isSelected ? 'inset 0 0 8px var(--color-success)' : 'none',
+                cursor: isSolved ? 'default' : 'pointer',
+                position: 'relative',
+                transition: 'all 0.15s ease',
+                zIndex: isSelected ? 10 : 1
+              }}
+            />
           );
         })}
+
+        {showPreview && !isSolved && (
+          <div 
+            style={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: 'url("/case-03/mystical-flame.jpg")',
+              backgroundSize: 'cover',
+              opacity: 0.85,
+              pointerEvents: 'none',
+              zIndex: 20
+            }}
+          />
+        )}
       </div>
 
-      {isAligned ? (
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '1rem' }}>
+        <button
+          type="button"
+          onClick={() => setShowPreview(!showPreview)}
+          disabled={isSolved}
+          className="basic-btn secondary-btn"
+          style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+        >
+          {showPreview ? "Hide Preview" : "Show Preview"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const initialTiles = Array.from({ length: 16 }, (_, i) => i);
+            let shuffled = [...initialTiles];
+            do {
+              shuffled = [...initialTiles].sort(() => Math.random() - 0.5);
+            } while (shuffled.every((val, idx) => val === idx));
+            setTiles(shuffled);
+            setSelectedTile(null);
+          }}
+          disabled={isSolved}
+          className="basic-btn secondary-btn"
+          style={{ padding: '4px 10px', fontSize: '0.8rem' }}
+        >
+          Reset
+        </button>
+      </div>
+
+      {isSolved && (
         <div style={{
           background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--color-success)',
-          padding: '8px 12px', borderRadius: '6px', marginBottom: '1.2rem', fontSize: '0.85rem', textAlign: 'center'
+          padding: '10px 14px', borderRadius: '6px', fontSize: '0.85rem', textAlign: 'center'
         }}>
-          <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--color-success)' }}>✓ Highways Connected: A-U-R-E-L-I-S</p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-          <button
-            type="button"
-            onClick={() => setPanels(panels.map(p => ({ ...p, rotation: 0, flippedH: false, flippedV: false })))}
-            className="basic-btn secondary-btn"
-            style={{ padding: '2px 6px', fontSize: '0.75rem', display: 'flex', gap: '4px', alignItems: 'center' }}
-          >
-            <RefreshCw size={10} /> Auto-Align (Dev Override)
-          </button>
+          <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--color-success)' }}>✓ Flame Restored Successfully</p>
+          <p style={{ margin: '4px 0 0 0', color: 'var(--color-text)' }}>
+            The seals are opening...
+          </p>
         </div>
       )}
-
-      <form onSubmit={handleSubmit} className="modal-form">
-        <input
-          type="text"
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          placeholder="ENTER DECRYPTION KEY..."
-          className="basic-input"
-          style={{ borderColor: error ? 'var(--color-danger)' : 'var(--color-accent)' }}
-        />
-        {error && <div className="error-text">Highways lead to a dead-end. Try again.</div>}
-        <button type="submit" className="basic-btn primary-btn" style={{ marginTop: '0.5rem' }}>
-          Decrypt Map Node
-        </button>
-      </form>
     </div>
   );
 }
@@ -1206,13 +1309,13 @@ export function QuestionModal({ activeAnomaly, solveAnomaly, closeAnomaly, showM
         </h2>
         <div className="modal-content" style={{ marginTop: '1.2rem' }}>
           
-          {currentPuzzle.type === 'forgotten_hymn' && <ForgottenHymn activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'caesar_scroll' && <CaesarScroll activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'chronicle_reconstruction' && <ChronicleReconstruction activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'excavation_grid' && <ExcavationGrid activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'temple_floor' && <TempleFloor activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'cathedral_organ' && <CathedralOrgan activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'impossible_map' && <ImpossibleMap activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'forgotten_hymn' && <ForgottenHymn key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'caesar_scroll' && <CaesarScroll key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'chronicle_reconstruction' && <ChronicleReconstruction key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {(currentPuzzle.type === 'memory_room' || currentPuzzle.type === 'excavation_grid') && <MemoryRoom key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'temple_floor' && <TempleFloor key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {(currentPuzzle.type === 'candle_piano' || currentPuzzle.type === 'cathedral_organ') && <CandlePiano key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {(currentPuzzle.type === 'flame_image_puzzle' || currentPuzzle.type === 'impossible_map') && <FlameImagePuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
 
           <div className="modal-actions" style={{ marginTop: '2rem' }}>
             <button type="button" onClick={closeAnomaly} className="basic-btn secondary-btn">

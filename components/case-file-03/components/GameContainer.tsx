@@ -24,7 +24,7 @@ export default function GameContainer() {
     showStory, finishStory
   } = useGameEngine();
 
-  const [showMap, setShowMap] = useState<boolean>(false);
+  const [showMap, setShowMap] = useState<boolean>(true);
 
   useEffect(() => {
     changeBGM('/cathedral.wav');

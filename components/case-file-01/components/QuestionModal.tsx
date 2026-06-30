@@ -274,9 +274,9 @@ export function QuestionModal({ activeAnomaly, solveAnomaly, closeAnomaly, showM
         </h2>
         <div className="modal-content">
           
-          {currentPuzzle.type === 'lights_out' && <LightsOutPuzzle activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'question' && <QuestionPuzzle activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'sequence' && <SequencePuzzle activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'lights_out' && <LightsOutPuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'question' && <QuestionPuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
+          {currentPuzzle.type === 'sequence' && <SequencePuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
 
           <div className="modal-actions" style={{ marginTop: '2rem' }}>
             <button type="button" onClick={closeAnomaly} className="basic-btn secondary-btn">

@@ -191,7 +191,7 @@ export function useGameEngine() {
 
         if (targetTile === 2) {
           const key = `${ny},${nx}`;
-          if (!anomalies[key].solved) {
+          if (anomalies[key] && !anomalies[key].solved) {
             setActiveAnomaly({ key, ...anomalies[key] });
             return prev;
           }
