@@ -1,16 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Header from "./Header";
-import Stage1 from "./stages/Stage1";
-import Stage2 from "./stages/Stage2";
-import InvestigationTable from "./InvestigationTable";
-import Stage3 from "./stages/Stage3";
-import Stage4 from "./stages/Stage4";
-import Stage5 from "./stages/Stage5";
-import Stage6 from "./stages/Stage6";
-import Stage7 from "./stages/Stage7";
-import Stage8 from "./stages/Stage8";
+import Header from "./components/Header";
+import Stage1 from "./components/stages/Stage1";
+import Stage2 from "./components/stages/Stage2";
+import InvestigationTable from "./components/InvestigationTable";
+import Stage3 from "./components/stages/Stage3";
+import Stage4 from "./components/stages/Stage4";
+import Stage5 from "./components/stages/Stage5";
+import Stage6 from "./components/stages/Stage6";
+import Stage7 from "./components/stages/Stage7";
+import Stage8 from "./components/stages/Stage8";
 
 export default function CaseFile06() {
   const [stage, setStage] = useState<number>(1);

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import CaseFile06 from "@/components/case-file-06/components/SybilTerminal";
+import CaseFile06 from "../../../components/case-file-06/CaseFile06";
 import CaseGuard from "@/components/CaseGuard";
 import "./case06.css";
 

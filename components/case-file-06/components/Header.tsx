@@ -1,8 +1,7 @@
 export default function Header({ 
   sessionTime, 
   view, 
-  setView,
-  onSkip
+  setView
 }: { 
   sessionTime: number, 
   view?: "terminal" | "table", 
