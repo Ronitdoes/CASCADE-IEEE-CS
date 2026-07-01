@@ -99,6 +99,7 @@ export function AlertElimination({ onSolved }: { onSolved: () => void }) {
   const [status, setStatus] = useState<'active' | 'interlude' | 'failed' | 'complete'>('active')
   const [interludeId, setInterludeId] = useState<1 | 2>(1)
   const [totalCleared, setTotalCleared] = useState(0)
+  const [dbAnswers, setDbAnswers] = useState<Record<string, string>>({})
 
   // Interlude state
   const [interludeInput, setInterludeInput] = useState('')
@@ -112,6 +113,25 @@ export function AlertElimination({ onSolved }: { onSolved: () => void }) {
   const timerRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const interludeTimerRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const alertIdCounter = useRef(0)
+
+  useEffect(() => {
+    async function loadAnswers() {
+      try {
+        const res = await fetch("/api/questions?caseId=07")
+        const data = await res.json()
+        if (data.success && data.questions) {
+          const answers: Record<string, string> = {}
+          data.questions.forEach((q: any) => {
+            answers[q.puzzleKey] = q.answer
+          })
+          setDbAnswers(answers)
+        }
+      } catch (err) {
+        console.error("Failed to load Case 7 db answers in AlertElimination:", err)
+      }
+    }
+    loadAnswers()
+  }, [])
 
   const spawnAlert = useCallback(() => {
     const config = WAVE_CONFIG[wave]
@@ -292,8 +312,11 @@ export function AlertElimination({ onSolved }: { onSolved: () => void }) {
     if (interludeCooldown > 0) return
 
     const input = interludeInput.trim().toUpperCase()
+    const interlude1 = (dbAnswers['interlude-1'] || 'QUARANTINE').toUpperCase()
+    const interlude2 = (dbAnswers['interlude-2'] || 'SURVIVAL').toUpperCase()
+
     if (interludeId === 1) {
-      if (input === 'QUARANTINE') {
+      if (input === interlude1) {
         // Proceed to wave 2
         setWave(1)
         setCleared(0)
@@ -305,7 +328,7 @@ export function AlertElimination({ onSolved }: { onSolved: () => void }) {
         setInterludeCooldown(5)
       }
     } else {
-      if (input === 'SURVIVAL') {
+      if (input === interlude2) {
         // Proceed to wave 3
         setWave(2)
         setCleared(0)

@@ -2,9 +2,10 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, saveDemoState } from '@/app/hunt/case-07/lib/session'
 import { isDbAvailable, db } from '@/db'
-import { puzzleEvents } from '@/db/schema'
+import { puzzleEvents, caseQuestions } from '@/db/schema'
 import { timelines } from '@/app/hunt/case-07/lib/timelines'
 import { verifyCsrf } from '@/app/hunt/case-07/lib/rateLimit'
+import { and, eq } from 'drizzle-orm'
 
 const allowedPuzzles = new Set([
   'quarantine-registration',
@@ -42,11 +43,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ correct: false, message: 'Invalid puzzle parameters.' }, { status: 400 })
     }
 
-    // Determine expected answer: check env var (no hardcoded fallback answers as strict rule)
-    const envKey = `PUZZLE_OPERATION_DEADLIGHT_${puzzleId.replaceAll('-', '_').toUpperCase()}`
-    const expected = process.env[envKey]
+    // Determine expected answer: check DB first, fall back to env key
+    let expected = ""
+    if (isDbAvailable) {
+      try {
+        const rows = await db.select().from(caseQuestions).where(
+          and(
+            eq(caseQuestions.caseId, "07"),
+            eq(caseQuestions.puzzleKey, puzzleId)
+          )
+        )
+        if (rows.length > 0) {
+          expected = rows[0].answer
+        }
+      } catch (dbError) {
+        console.error("Failed to fetch Case 7 answer from DB:", dbError)
+      }
+    }
+
     if (!expected) {
-      console.error(`Missing expected answer in process.env for key: ${envKey}`)
+      const envKey = `PUZZLE_OPERATION_DEADLIGHT_${puzzleId.replaceAll('-', '_').toUpperCase()}`
+      expected = process.env[envKey] || ""
+    }
+
+    if (!expected) {
+      console.error(`Missing expected answer in DB and process.env for key: ${puzzleId}`)
       return NextResponse.json({ correct: false, message: 'Configuration error: answer key not configured.' }, { status: 500 })
     }
 

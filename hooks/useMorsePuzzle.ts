@@ -2,14 +2,15 @@ import { useState } from "react";
 import { validateAnswer } from "@/lib/validateAnswer";
 import { morsePuzzleData } from "@/data/morseTransmission";
 
-export function useMorsePuzzle() {
+export function useMorsePuzzle(expectedAnswer?: string) {
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState(false);
   const [hintIndex, setHintIndex] = useState(-1);
   const [isSolved, setIsSolved] = useState(false);
 
   const handleSubmit = () => {
-    if (validateAnswer(answer, morsePuzzleData.expectedAnswer)) {
+    const targetAnswer = expectedAnswer || morsePuzzleData.expectedAnswer;
+    if (validateAnswer(answer, targetAnswer)) {
       setIsSolved(true);
       setError(false);
     } else {

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import TypewriterText from "../TypewriterText";
 
-export default function Stage7({ onComplete, onLogRecovered }: { onComplete: () => void, onLogRecovered: (id: string, text: string) => void }) {
+export default function Stage7({ onComplete, onLogRecovered, expectedAnswer = "7" }: { onComplete: () => void, onLogRecovered: (id: string, text: string) => void, expectedAnswer?: string }) {
   const [inputValue, setInputValue] = useState("");
   const [error, setError] = useState(false);
   const [dataPoint, setDataPoint] = useState("");
@@ -29,7 +29,7 @@ export default function Stage7({ onComplete, onLogRecovered }: { onComplete: () 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim() === "7") {
+    if (inputValue.trim().toLowerCase() === expectedAnswer.toLowerCase()) {
       onLogRecovered("log-stage7", "Intelligence is recognizing patterns that survive translation.");
       onComplete();
     } else {

@@ -24,7 +24,9 @@ export function CaseFileProvider({ children }: CaseFileProviderProps) {
         const data = await res.json();
         if (data.success && data.questions) {
           data.questions.forEach((q: any) => {
-            const p = puzzlesConfig.find((x) => x.slug === q.puzzleKey);
+            const p = puzzlesConfig.find(
+              (x) => x.slug === q.puzzleKey || x.slug.replaceAll("-", "_") === q.puzzleKey.replaceAll("-", "_")
+            );
             if (p) {
               p.clue = q.question;
               p.answer = q.answer;

@@ -726,7 +726,7 @@ const P1_LINES = [
   { time:"22:19", raw:"Inland.. nets..— offline.— Routing.. via.. primary.", decoded:"INLETS" },
   { time:"22:31", raw:"Final.. log—..— Experiment.. date:.. October.—. Year:.. 1972.", decoded:"OCTOBER" },
 ];
-function P1({ wrong, locked, onSolve }: PuzzleProps) {
+function P1({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [open, setOpen] = useState<number | null>(null);
   const [inp, setInp] = useState("");
   const [st, setSt] = useState<PuzzleStatus | null>(null);
@@ -735,7 +735,8 @@ function P1({ wrong, locked, onSolve }: PuzzleProps) {
     e.preventDefault();
     if (locked) return;
     const c = inp.trim().toLowerCase();
-    if (["october", "14 october 1972", "14-oct-1972"].includes(c)) {
+    const expected = (dbAnswers.p1 || "october").toLowerCase();
+    if ([expected, "14 october 1972", "14-oct-1972"].includes(c)) {
       setSt({ ok: true, msg: "Confirmed — OCTOBER is the non-anagram. Transmission date verified." });
       setTimeout(onSolve, 700);
     } else {
@@ -786,7 +787,7 @@ const STAFF: StaffEntry[] = [
   {id:11, name:"Dr. P. Osei",       dept:"Chemistry",      clr:"B", entry:"22:05", exit:"04:45", flag:false},
   {id:12, name:"A. Whitmore",       dept:"Engineering",    clr:"A", entry:"22:00", exit:"05:20", flag:false},
 ];
-function P2({ wrong, locked, onSolve }: PuzzleProps) {
+function P2({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [sel, setSel] = useState<number[]>([]);
   const [inp, setInp] = useState("");
   const [st, setSt] = useState<PuzzleStatus | null>(null);
@@ -796,8 +797,9 @@ function P2({ wrong, locked, onSolve }: PuzzleProps) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
-    if (inp.trim().toUpperCase().replace(/\s/g, "") === "EK4") {
-      setSt({ ok: true, msg: "Three contradictions confirmed. Code EK4 verified." });
+    const expected = (dbAnswers.p2 || "EK4").toUpperCase();
+    if (inp.trim().toUpperCase().replace(/\s/g, "") === expected) {
+      setSt({ ok: true, msg: `Three contradictions confirmed. Code ${expected} verified.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Incorrect. Order matters — read initials as they appear in the ledger, top to bottom." });
@@ -846,7 +848,7 @@ const P3_COMPOUNDS: P3Compound[] = [
   {id:5, formula:"Ca",   breakdown:"Ca(20)",            sum:20,  letter:"T", impossible:false},
   {id:6, formula:"H",    breakdown:"H(1)",              sum:1,   letter:"A", impossible:false},
 ];
-function P3({ wrong, locked, onSolve }: PuzzleProps) {
+function P3({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [rev, setRev] = useState<Record<number, boolean>>({});
   const [inp, setInp] = useState("");
   const [st, setSt] = useState<PuzzleStatus | null>(null);
@@ -854,8 +856,9 @@ function P3({ wrong, locked, onSolve }: PuzzleProps) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
-    if (inp.trim().toUpperCase() === "DELTA") {
-      setSt({ ok: true, msg: "Codename confirmed — DELTA." });
+    const expected = (dbAnswers.p3 || "DELTA").toUpperCase();
+    if (inp.trim().toUpperCase() === expected) {
+      setSt({ ok: true, msg: `Codename confirmed — ${expected}.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Not quite. Skip the impossible compound, then read the remaining five letters in written order." });
@@ -910,7 +913,7 @@ const SL_DEFS: SlDef[] = [
   {id:3, label:"GAMMA", path:[[0,2],[1,3],[2,6],[3,5],[4,4],[5,3],[6,2],[7,1]], digit:9, corruptAt:[2,6]},
   {id:4, label:"DELTA", path:[[0,5],[1,4],[2,3],[3,2],[4,1],[5,0],[6,7],[7,6]], digit:4},
 ];
-function P4({ wrong, locked, onSolve }: PuzzleProps) {
+function P4({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [showGrid, setShowGrid] = useState(false);
   const [inp, setInp] = useState("");
   const [st, setSt] = useState<PuzzleStatus | null>(null);
@@ -919,8 +922,10 @@ function P4({ wrong, locked, onSolve }: PuzzleProps) {
     e.preventDefault();
     if (locked) return;
     const c = inp.trim().replace(/\s/g, "");
-    if (c === "7294" || c === "7-2-9-4") {
-      setSt({ ok: true, msg: "PIN confirmed — 7294." });
+    const expected = dbAnswers.p4 || "7294";
+    const expectedDashed = expected.split("").join("-");
+    if (c === expected || c === expectedDashed) {
+      setSt({ ok: true, msg: `PIN confirmed — ${expected}.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Incorrect. Recover the corrupted cell first using the mirror rule, then average all four scan lines." });
@@ -1008,7 +1013,7 @@ const WITNESSES: Witness[] = [
     {id:"W5d", text:"The only word I could produce afterward was ROOM, again.", true:true},
   ]},
 ];
-function P5({ wrong, locked, onSolve }: PuzzleProps) {
+function P5({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [openW, setOpenW] = useState<string | null>(null);
   const [flagged, setFlagged] = useState<Record<string, boolean>>({});
   const [inp, setInp] = useState("");
@@ -1020,8 +1025,10 @@ function P5({ wrong, locked, onSolve }: PuzzleProps) {
     e.preventDefault();
     if (locked) return;
     const c = inp.trim().toLowerCase().replace(/\s+/g, " ");
-    if (["the null room", "null room"].includes(c)) {
-      setSt({ ok: true, msg: "Location confirmed — THE NULL ROOM." });
+    const expected = (dbAnswers.p5 || "the null room").toLowerCase();
+    const baseExpected = expected.replace("the ", "");
+    if ([expected, baseExpected].includes(c)) {
+      setSt({ ok: true, msg: `Location confirmed — ${expected.toUpperCase()}.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Not quite. Find one lie per witness. The key word in each of the first three witnesses' true statements (in witness order) gives you the answer." });
@@ -1079,7 +1086,7 @@ const ARCHIVE: Record<string, ArchiveEntry> = {
   "F-8": {letter:"Q", next:"F-2", text:"Returns to F-2 — already visited. Dead end branch."},
   "G-9": {letter:"W", next:"G-9", text:"[LOOP] — References itself. Dead end."},
 };
-function P6({ wrong, locked, onSolve }: PuzzleProps) {
+function P6({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [visited, setVisited] = useState<string[]>([]);
   const [letters, setLetters] = useState<string[]>([]);
   const [cur, setCur] = useState<string>("A-1");
@@ -1109,7 +1116,8 @@ function P6({ wrong, locked, onSolve }: PuzzleProps) {
     e.preventDefault();
     if (locked) return;
     const c = inp.trim().toUpperCase().replace(/[-\s]/g, "");
-    if (c === "NULLGATE") {
+    const expected = (dbAnswers.p6 || "NULLGATE").toUpperCase().replace(/[-\s]/g, "");
+    if (c === expected) {
       setSt({ ok: true, msg: "Project name confirmed — NULL-GATE." });
       setTimeout(onSolve, 700);
     } else {
@@ -1176,7 +1184,7 @@ const ROOMS: Room[] = [
 const LEGEND_GIVEN: Record<number, string> = {1:"W",2:"Z",3:"T",4:"F",5:"H",6:"E",7:"R",8:"M",9:"S",10:"O",11:"I",12:"N"};
 const HIGHLIGHTED = [1,2,3,4,5,6,7];
 const VIOLATIONS = [[1,2],[4,8],[11,12]];
-function P7({ wrong, locked, onSolve }: PuzzleProps) {
+function P7({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   // FIX: corr keys stored as numbers; JS coerces to strings in object lookups — harmless,
   // but initialising as strings makes intent explicit and avoids any linting noise.
   const [flagV, setFlagV] = useState<string[]>([]);
@@ -1191,8 +1199,9 @@ function P7({ wrong, locked, onSolve }: PuzzleProps) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
-    if (inp.trim().toUpperCase() === "WATCHER") {
-      setSt({ ok: true, msg: "Blueprint cipher resolved — WATCHER." });
+    const expected = (dbAnswers.p7 || "WATCHER").toUpperCase();
+    if (inp.trim().toUpperCase() === expected) {
+      setSt({ ok: true, msg: `Blueprint cipher resolved — ${expected}.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Not correct. Find all three violations, correct those legend entries, then read rooms 1–7 in sequence." });
@@ -1269,7 +1278,7 @@ const P8_SEQS: P8Seq[] = [
   {id:3, rule:"Each symbol mirrors the one two positions before it: seq[n] = seq[n−2]", seq:["△","○","△","○","△","⊕","△","○","△","○"], correct:"○", note:"seq[5] = seq[3] = ○. Intruder: ⊕"},
   {id:4, rule:"Symbols appear in pairs before advancing: ⬡⬡ → ○○ → ⬟⬟ …", seq:["⬡","⬡","○","○","⬟","★","⬟","★","⬡","⬡"], correct:"⬟", note:"Index 5: second of ⬟⬟ pair. Intruder: ★"},
 ];
-function P8({ wrong, locked, onSolve }: PuzzleProps) {
+function P8({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [openS, setOpenS] = useState<number | null>(null);
   // FIX: was Array(8) in original — should be 4 entries for 4 sequences.
   const [ans, setAns] = useState<string[]>(["", "", "", ""]);
@@ -1281,8 +1290,9 @@ function P8({ wrong, locked, onSolve }: PuzzleProps) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
-    if (inp.trim().toUpperCase() === "ZERO") {
-      setSt({ ok: true, msg: "Sequence anomaly confirmed — ZERO." });
+    const expected = (dbAnswers.p8 || "ZERO").toUpperCase();
+    if (inp.trim().toUpperCase() === expected) {
+      setSt({ ok: true, msg: `Sequence anomaly confirmed — ${expected}.` });
       setTimeout(onSolve, 700);
     } else {
       setSt({ ok: false, msg: "Not correct. For each sequence: find the rule, determine the correct symbol at index 5, look it up in the table." });
@@ -1353,7 +1363,7 @@ const DOSSIER: DossierField[] = [
   {id:7, label:"FACILITY FOUNDED",   answer:"1967",           ph:"Spoken, not written"},
   {id:8, label:"DIRECTOR SURNAME",   answer:"VOSS",           ph:"Heard in recovered audio"},
 ];
-function P9({ wrong, locked, onSolve }: PuzzleProps) {
+function P9({ wrong, locked, onSolve, dbAnswers = {} }: PuzzleProps & { dbAnswers?: Record<string, string> }) {
   const [vals, setVals] = useState<string[]>(Array(8).fill(""));
   const [st, setSt] = useState<PuzzleStatus | null>(null);
 
@@ -1362,8 +1372,20 @@ function P9({ wrong, locked, onSolve }: PuzzleProps) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (locked) return;
+
+    const d1 = (dbAnswers.dossier_1 || "14 OCTOBER 1972").toUpperCase();
+    const d2 = (dbAnswers.dossier_2 || "EK4").toUpperCase();
+    const d3 = (dbAnswers.dossier_3 || "DELTA").toUpperCase();
+    const d4 = (dbAnswers.dossier_4 || "7294").toUpperCase();
+    const d5 = (dbAnswers.dossier_5 || "THE NULL ROOM").toUpperCase();
+    const d6 = (dbAnswers.dossier_6 || "NULL-GATE").toUpperCase();
+    const d7 = (dbAnswers.dossier_7 || "1967").toUpperCase();
+    const d8 = (dbAnswers.dossier_8 || "VOSS").toUpperCase();
+
+    const expectedAnswers = [d1, d2, d3, d4, d5, d6, d7, d8];
+
     const bad = DOSSIER
-      .map((b, i) => vals[i].trim().toUpperCase().replace(/\s+/g, " ") !== b.answer ? b.id : null)
+      .map((b, i) => vals[i].trim().toUpperCase().replace(/\s+/g, " ") !== expectedAnswers[i] ? b.id : null)
       .filter((b): b is number => b !== null);
     if (bad.length === 0) {
       setSt({ ok: true, msg: "ALL FIELDS CONFIRMED. Final dossier unlocked." });
@@ -1527,6 +1549,7 @@ export default function App() {
   const [timerOn, setTimerOn] = useState(false);
   const [muted, setMuted] = useState(false);
   const [trans, setTrans] = useState(false);
+  const [dbAnswers, setDbAnswers] = useState<Record<string, string>>({});
   const ivRef = useRef<any>(null);
   const music = useMusicEngine();
 
@@ -1535,6 +1558,26 @@ export default function App() {
     else if (ivRef.current) clearInterval(ivRef.current);
     return () => { if (ivRef.current) clearInterval(ivRef.current); };
   }, [timerOn]);
+
+  // Load DB questions on mount
+  useEffect(() => {
+    async function loadQuestions() {
+      try {
+        const res = await fetch("/api/questions?caseId=08");
+        const data = await res.json();
+        if (data.success && data.questions) {
+          const answers: Record<string, string> = {};
+          data.questions.forEach((q: any) => {
+            answers[q.puzzleKey] = q.answer;
+          });
+          setDbAnswers(answers);
+        }
+      } catch (err) {
+        console.error("Failed to load Case 8 questions:", err);
+      }
+    }
+    loadQuestions();
+  }, []);
 
   // Load DB progress on mount
   useEffect(() => {
@@ -1620,7 +1663,7 @@ export default function App() {
               const meta = PUZZLE_META[step.idx];
               return (
                 <Shell key={step.idx} index={step.idx + 1} title={meta.title} prompt={meta.prompt} hints={meta.hints}>
-                  <Comp onSolve={goNext}/>
+                  <Comp onSolve={goNext} dbAnswers={dbAnswers}/>
                 </Shell>
               );
             })()}

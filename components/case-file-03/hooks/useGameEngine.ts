@@ -239,6 +239,10 @@ export function useGameEngine() {
                   updated[anomalyKey].solved = true;
                 }
               });
+              const allNowSolved = Object.keys(updated).length > 0 && Object.values(updated).every(a => a.solved);
+              if (allNowSolved) {
+                setGameWon(true);
+              }
               return updated;
             });
           }
@@ -291,6 +295,11 @@ export function useGameEngine() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ caseId: '03', key: 'solvedAnomalies', value: solvedIds })
       }).catch(err => console.error('Failed to save Case 3 progress:', err));
+
+      const allNowSolved = Object.values(updated).every(a => a.solved);
+      if (allNowSolved) {
+        setGameWon(true);
+      }
 
       return updated;
     });

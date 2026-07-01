@@ -33,9 +33,29 @@ export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
   const [activePuzzle, setActivePuzzle] = useState<keyof FragmentState | null>(null)
   const [assembling, setAssembling] = useState(false)
   const [assembled, setAssembled] = useState(false)
+  const [dbAnswers, setDbAnswers] = useState<Record<string, string>>({})
   const symbolRef = useRef<HTMLDivElement>(null)
 
   const solvedCount = Object.values(fragments).filter(Boolean).length
+
+  useEffect(() => {
+    async function loadAnswers() {
+      try {
+        const res = await fetch("/api/questions?caseId=07")
+        const data = await res.json()
+        if (data.success && data.questions) {
+          const answers: Record<string, string> = {}
+          data.questions.forEach((q: any) => {
+            answers[q.puzzleKey] = q.answer
+          })
+          setDbAnswers(answers)
+        }
+      } catch (err) {
+        console.error("Failed to load Case 7 db answers in SymbolReconstruction:", err)
+      }
+    }
+    loadAnswers()
+  }, [])
 
   const solveFragment = useCallback((key: keyof FragmentState) => {
     setFragments(prev => {
@@ -145,13 +165,13 @@ export function SymbolReconstruction({ onSolved }: { onSolved: () => void }) {
         <BinaryPuzzle onSolved={() => solveFragment('binary')} onBack={() => setActivePuzzle(null)} />
       )}
       {activePuzzle === 'packet' && (
-        <PacketPuzzle onSolved={() => solveFragment('packet')} onBack={() => setActivePuzzle(null)} />
+        <PacketPuzzle onSolved={() => solveFragment('packet')} onBack={() => setActivePuzzle(null)} expectedAnswer={dbAnswers['packet-answer'] || PACKET_ANSWER} />
       )}
       {activePuzzle === 'image' && (
         <ImageDecodePuzzle onSolved={() => solveFragment('image')} onBack={() => setActivePuzzle(null)} />
       )}
       {activePuzzle === 'cipher' && (
-        <CipherPuzzle onSolved={() => solveFragment('cipher')} onBack={() => setActivePuzzle(null)} packetSolved={fragments.packet} />
+        <CipherPuzzle onSolved={() => solveFragment('cipher')} onBack={() => setActivePuzzle(null)} packetSolved={fragments.packet} expectedAnswer={dbAnswers['cipher-answer'] || CIPHER_ANSWER} />
       )}
 
       {/* Assembly / completion */}
@@ -247,7 +267,7 @@ function BinaryPuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =
 }
 
 /* ═══════════════ PACKET DECODER PUZZLE ═══════════════ */
-function PacketPuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () => void }) {
+function PacketPuzzle({ onSolved, onBack, expectedAnswer }: { onSolved: () => void; onBack: () => void; expectedAnswer: string }) {
   const [input, setInput] = useState('')
   const [wrong, setWrong] = useState(false)
   const [elapsed, setElapsed] = useState(0)
@@ -265,7 +285,7 @@ function PacketPuzzle({ onSolved, onBack }: { onSolved: () => void; onBack: () =
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (input.trim().toUpperCase() === PACKET_ANSWER) {
+    if (input.trim().toUpperCase() === expectedAnswer.toUpperCase()) {
       onSolved()
     } else {
       setWrong(true)
@@ -463,14 +483,14 @@ function ImageDecodePuzzle({ onSolved, onBack }: { onSolved: () => void; onBack:
 }
 
 /* ═══════════════ CIPHER PUZZLE ═══════════════ */
-function CipherPuzzle({ onSolved, onBack, packetSolved }: { onSolved: () => void; onBack: () => void; packetSolved: boolean }) {
+function CipherPuzzle({ onSolved, onBack, packetSolved, expectedAnswer }: { onSolved: () => void; onBack: () => void; packetSolved: boolean; expectedAnswer: string }) {
   const [input, setInput] = useState('')
   const [wrong, setWrong] = useState(false)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!packetSolved) return
-    if (input.trim().toUpperCase() === CIPHER_ANSWER) {
+    if (input.trim().toUpperCase() === expectedAnswer.toUpperCase()) {
       onSolved()
     } else {
       setWrong(true)
