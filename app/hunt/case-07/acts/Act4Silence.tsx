@@ -6,6 +6,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { ActCinematicIntro } from '../components/ActCinematicIntro'
 import { DialogueBox } from '../components/DialogueBox'
 import { AlertElimination } from '../components/AlertElimination'
+import { SignalInterceptor } from '../components/SignalInterceptor'
 import { sounds } from '@/app/hunt/case-07/utils/SoundEffects'
 import styles from '../operation-deadlight.module.css'
 
@@ -15,6 +16,7 @@ interface Act4Props {
 
 export function Act4Silence({ onPuzzleSolved }: Act4Props) {
   const sectionRef = useRef<HTMLElement>(null)
+  const [narrativeComplete, setNarrativeComplete] = useState(false)
   const [puzzleStarted, setPuzzleStarted] = useState(false)
   const [isGlitching, setIsGlitching] = useState(false)
 
@@ -30,6 +32,11 @@ export function Act4Silence({ onPuzzleSolved }: Act4Props) {
   }, [])
 
   function startPuzzleFlow() {
+    if (!narrativeComplete) {
+      sounds.playError()
+      return
+    }
+
     sounds.playError() // Play low warning buzz
     setIsGlitching(true)
 
@@ -72,28 +79,30 @@ export function Act4Silence({ onPuzzleSolved }: Act4Props) {
             speaker="CONTAINMENT PROTOCOLS — SECTOR 4"
             side="left"
             style="classified"
-            text="The final days of Operation Kennedy remain largely unknown. Most records were intentionally destroyed. Recovered radio transmissions reveal increasing confusion among containment teams. Personnel reported individuals appearing in locations they had never entered. Security footage showed conflicting events occurring at the same time."
+            text="The containment timeline has been recovered. Access the declassified frequency channel and play back the tape to capture the transmission log before it deletes."
           />
 
-          <div className={styles.narrativeEtch} style={{ marginTop: '2rem', marginBottom: '2rem', lineHeight: '1.7' }}>
-            <p>Entire sections of the settlement became completely inaccessible despite appearing physically unchanged. The final message received from Site Kennedy was heavily corrupted. After reconstruction, only a single sentence remained: <em>&quot;It isn&apos;t spreading. It&apos;s replacing.&quot;</em></p>
-            <p style={{ marginTop: '1rem' }}>Moments later, all communication ceased. No further contact was ever established, and the site was permanently abandoned. An active warning cascade is now threatening to wipe the remaining mainframe buffers. You must clear the alerts to halt the deletion sequence.</p>
-          </div>
+          {/* Signal Interceptor Tape UI — replacing TerminalReplay */}
+          <SignalInterceptor onComplete={() => setNarrativeComplete(true)} />
 
           {!puzzleStarted ? (
-            <div className="border border-red-900/50 bg-[#0f0909]/80 p-8 rounded-xl my-8 text-center backdrop-blur-md relative overflow-hidden group shadow-[inset_0_0_20px_rgba(139,26,26,0.15)] hover:border-red-600/40 transition-all duration-300">
+            <div className={`border ${narrativeComplete ? 'border-red-900/50' : 'border-zinc-800/30'} bg-[#0f0909]/80 p-8 rounded-xl my-8 text-center backdrop-blur-md relative overflow-hidden group shadow-[inset_0_0_20px_rgba(139,26,26,0.15)] hover:border-red-600/40 transition-all duration-300`}>
               <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-red-500 to-transparent opacity-60 group-hover:scale-x-110 transition-transform duration-700" />
               <div className="font-mono text-xs text-red-500 tracking-[0.2em] uppercase mb-3">
                 SYSTEM CASCADE // BUFFER WIPING IN PROGRESS
               </div>
               <p className="text-zinc-400 text-sm max-w-lg mx-auto mb-6 leading-relaxed">
-                CRITICAL WARNING: Mainframe security cascade active. Halting the deletion protocol requires emergency terminal override.
+                {narrativeComplete
+                  ? 'CRITICAL WARNING: Mainframe security cascade active. Halting the deletion protocol requires emergency terminal override.'
+                  : 'LOCKED: Play the tape above to capture the final transmission log.'
+                }
               </p>
               <button
                 onClick={startPuzzleFlow}
-                className="font-mono text-xs font-bold tracking-[0.25em] text-[#ff6666] bg-[#3a1010]/80 border border-[#8b1a1a] hover:bg-[#5a1515] hover:border-[#ff4444] hover:shadow-[0_0_25px_rgba(139,26,26,0.3)] rounded px-6 py-3.5 transition-all duration-300 active:scale-95 uppercase cursor-pointer"
+                disabled={!narrativeComplete}
+                className={`font-mono text-xs font-bold tracking-[0.25em] ${narrativeComplete ? 'text-[#ff6666] bg-[#3a1010]/80 border-[#8b1a1a] hover:bg-[#5a1515] hover:border-[#ff4444] hover:shadow-[0_0_25px_rgba(139,26,26,0.3)] cursor-pointer' : 'text-zinc-600 bg-zinc-900/50 border-zinc-700 cursor-not-allowed'} border rounded px-6 py-3.5 transition-all duration-300 active:scale-95 uppercase`}
               >
-                Access Alert Dashboard & Override
+                {narrativeComplete ? 'Access Alert Dashboard & Override' : '◆ LOCKED — AUDIO TRANSMISSION PENDING'}
               </button>
             </div>
           ) : (
@@ -125,5 +134,3 @@ export function Act4Silence({ onPuzzleSolved }: Act4Props) {
     </>
   )
 }
-
-

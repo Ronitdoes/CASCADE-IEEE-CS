@@ -6,6 +6,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { ActCinematicIntro } from '../components/ActCinematicIntro'
 import { DialogueBox } from '../components/DialogueBox'
 import { MessageReconstruction } from '../components/MessageReconstruction'
+import { TimelineDecoder } from '../components/TimelineDecoder'
+import { NarrativeGate } from '../components/NarrativeGate'
 import { PuzzleInput } from '@/components/case-07/shared/PuzzleInput'
 import { useActProgress } from '../hooks/useActProgress'
 import styles from '../operation-deadlight.module.css'
@@ -15,6 +17,7 @@ export function Act8FinalTransmission({ onPuzzleSolved }: { onPuzzleSolved: () =
   const { isComplete } = useActProgress()
   const isAct8Complete = isComplete('act-8')
   const [reconstructionSolved, setReconstructionSolved] = useState(false)
+  const [narrativeComplete, setNarrativeComplete] = useState(false)
 
   // Glitch and Typewriter story ending states
   const [isGlitching, setIsGlitching] = useState(false)
@@ -62,6 +65,7 @@ export function Act8FinalTransmission({ onPuzzleSolved }: { onPuzzleSolved: () =
     'SYSTEM ERROR: BIOMETRIC CORRUPTION ACTIVE...',
     'LOCKOUT INITIATED BY SYSTEM ADMINISTRATOR.',
     'EXITING TIMELINE ARCHIVE...',
+    'QOUTES ARE LOADED FROM PARASITIC VECTORS.',
   ]
 
   const handleCorrect = () => {
@@ -150,31 +154,36 @@ export function Act8FinalTransmission({ onPuzzleSolved }: { onPuzzleSolved: () =
             speaker="PROJECT NULL — RECONSTRUCTED MEMO"
             side="left"
             style="classified"
-            text="We successfully intercepted the final transmission from Site Kennedy. It was corrupted beyond standard recognition. It took task force engineers 11 months of deep-scan timeline calculations to partially reconstruct the stream. What we recovered changed everything. The message was not a distress call—it was a direct instruction."
+            text="We successfully intercepted the final transmission from Site Kennedy. It was corrupted. Complete the timeline network mapping below to synchronize and verify all declassified cases."
           />
 
-          <div className={styles.narrativeEtch} style={{ marginTop: '2rem', marginBottom: '2rem', lineHeight: '1.7' }}>
-            <p>The final logs indicate that Leon S. Kennedy located the Aetherion fragment embedded in theLas Plagas parasite cluster. Rather than returning, he merged the fragment's temporal wave signature with the terminal archives to prevent external replication. The fragment was never lost; it chose its host, waiting for a recovery agent with the correct cross-act authorization vector.</p>
-            <p style={{ marginTop: '1rem' }}>Reconstruct the final transmission logs below. Solve the character scrambling grid, verify the cross-act logic gaps, decode the final line of the transmission, and align the temporal waveforms to retrieve the Aetherion fragment.</p>
-          </div>
+          {/* Timeline Decoder SVG map — replacing TerminalReplay */}
+          <TimelineDecoder onComplete={() => setNarrativeComplete(true)} />
 
-          <MessageReconstruction onSolved={() => setReconstructionSolved(true)} />
+          <NarrativeGate narrativeComplete={narrativeComplete}>
+            <div className={styles.narrativeEtch} style={{ marginTop: '2rem', marginBottom: '2rem', lineHeight: '1.7' }}>
+              <p>The final logs indicate that Leon S. Kennedy located the Aetherion fragment embedded in the Las Plagas parasite cluster. Rather than returning, he merged the fragment&apos;s temporal wave signature with the terminal archives to prevent external replication. The fragment was never lost; it chose its host, waiting for a recovery agent with the correct cross-act authorization vector.</p>
+              <p style={{ marginTop: '1rem' }}>Reconstruct the final transmission logs below. Solve the character scrambling grid, verify the cross-act logic gaps, decode the final line of the transmission, and align the temporal waveforms to retrieve the Aetherion fragment.</p>
+            </div>
 
-          <div style={{ marginTop: '2rem' }}>
-            <DialogueBox
-              speaker="SYSTEM"
-              side="center"
-              style="system"
-              text="The fragment's name was hidden in the transmission all along. Enter the name of the artifact to complete the recovery."
-            />
-            <PuzzleInput
-              puzzleId="final-transmission"
-              timelineId="operation-deadlight"
-              onCorrect={handleCorrect}
-              placeholder="Enter the artifact name..."
-              theme="terminal"
-            />
-          </div>
+            <MessageReconstruction onSolved={() => setReconstructionSolved(true)} />
+
+            <div style={{ marginTop: '2rem' }}>
+              <DialogueBox
+                speaker="SYSTEM"
+                side="center"
+                style="system"
+                text="The fragment's name was hidden in the transmission all along. Enter the name of the artifact to complete the recovery."
+              />
+              <PuzzleInput
+                puzzleId="final-transmission"
+                timelineId="operation-deadlight"
+                onCorrect={handleCorrect}
+                placeholder="Enter the artifact name..."
+                theme="terminal"
+              />
+            </div>
+          </NarrativeGate>
         </div>
       </section>
 

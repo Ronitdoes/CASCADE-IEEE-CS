@@ -87,7 +87,7 @@ ${text}
 \n`
     fs.appendFileSync(logFilePath, logEntry, 'utf-8')
     console.log('\n[LOCAL EMAIL SIMULATOR] Email logged to artifacts/sent_emails.log:\n', logEntry)
-    
+
     return { success: true, id: 'simulated-brevo-id-' + Math.random().toString(36).substr(2, 9), method: 'local_log' }
   } catch (err: any) {
     console.error('Failed to log email to local artifacts:', err)

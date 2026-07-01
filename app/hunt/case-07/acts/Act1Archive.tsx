@@ -4,12 +4,14 @@ import { useEffect, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { DialogueBox } from '../components/DialogueBox'
+import { CaseDossier } from '../components/CaseDossier'
 import styles from '../operation-deadlight.module.css'
 
 export function Act1Archive() {
   const sectionRef = useRef<HTMLElement>(null)
   const dossierRef = useRef<HTMLElement>(null)
   const redactionsRef = useRef<HTMLSpanElement[]>([])
+  const [archiveRead, setArchiveRead] = useState(false)
   
   const [timeStr, setTimeStr] = useState('1996/03/14 04:17:09')
   useEffect(() => {
@@ -185,6 +187,9 @@ export function Act1Archive() {
           text="The Aetherion fragment is the source of the parasitic organism. Your directive: recover the fragment before the timeline fracture becomes irreversible."
         />
 
+        {/* Case Dossier Component — replacing TerminalReplay */}
+        <CaseDossier onComplete={() => setArchiveRead(true)} />
+
         <div className={styles.narrativeEtch} style={{ marginTop: '3rem' }}>
           <p>In 1996, initial reports described isolated medical incidents and unexplained disappearances. Personnel began reporting unusual behavior among residents. Witness accounts contradicted one another.</p>
           <p style={{ marginTop: '1.5rem' }}>Medical examinations produced inconsistent results. Three weeks later, all contact with Site Kennedy was lost. The investigation was classified and archived under <strong>PROJECT NULL</strong>.</p>
@@ -200,4 +205,3 @@ export function Act1Archive() {
     </section>
   )
 }
-
