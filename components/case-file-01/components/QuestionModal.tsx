@@ -266,76 +266,6 @@ function WeightBalancePuzzle({ anomalyKey, onSolve }: WeightBalancePuzzleProps) 
     </div>
   );
 }
-// --- QUESTION LOGIC ---
-interface QuestionPuzzleProps {
-  activeAnomaly: {
-    question?: string;
-    puzzleKey?: string;
-  };
-  onSolve: () => void;
-}
-
-function QuestionPuzzle({ activeAnomaly, onSolve }: QuestionPuzzleProps) {
-  const [answer, setAnswer] = useState<string>('');
-  const [error, setError] = useState<boolean>(false);
-  const [isVerifying, setIsVerifying] = useState<boolean>(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isVerifying) return;
-    setIsVerifying(true);
-    try {
-      const res = await fetch("/api/questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          caseId: "01",
-          puzzleKey: activeAnomaly.puzzleKey,
-          answer: answer
-        })
-      });
-      const data = await res.json();
-      if (data.success && data.correct) {
-        setAnswer('');
-        setError(false);
-        onSolve();
-      } else {
-        setError(true);
-        setTimeout(() => setError(false), 2000);
-      }
-    } catch (err) {
-      console.error("Failed to verify Case 1 answer:", err);
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    } finally {
-      setIsVerifying(false);
-    }
-  };
-
-  return (
-    <>
-      <p className="question-text" style={{ marginBottom: '2rem', fontSize: '1.2rem', lineHeight: 1.5 }}>
-        {activeAnomaly.question}
-      </p>
-      <form onSubmit={handleSubmit} className="modal-form">
-        <input
-          type="text"
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          placeholder="Enter decryption key..."
-          className="basic-input"
-          autoFocus
-          style={{ borderColor: error ? 'var(--color-danger)' : 'var(--color-accent)' }}
-        />
-        {error && <div className="error-text">Decryption Failed</div>}
-        <button type="submit" className="basic-btn primary-btn" style={{ marginTop: '1rem' }}>
-          Decrypt
-        </button>
-      </form>
-    </>
-  );
-}
-
 // --- SEQUENCE LOGIC ---
 interface SequencePuzzleProps {
   activeAnomaly: {
@@ -495,22 +425,11 @@ export function QuestionModal({ activeAnomaly, solveAnomaly, closeAnomaly, showM
           {currentPuzzle.type === 'lights_out' && <LightsOutPuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
           {currentPuzzle.type === 'weight_balance' && <WeightBalancePuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} anomalyKey={activeAnomaly.key} onSolve={handleSolve} />}
           {currentPuzzle.type === 'sequence' && <SequencePuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
-          {currentPuzzle.type === 'question' && <QuestionPuzzle key={`${activeAnomaly.key}-${currentPuzzleIndex}`} activeAnomaly={currentPuzzle} onSolve={handleSolve} />}
 
           <div className="modal-actions" style={{ marginTop: '2rem' }}>
             <button type="button" onClick={closeAnomaly} className="basic-btn secondary-btn">
               Abort
             </button>
-            {showMap && (
-              <button 
-                type="button" 
-                onClick={handleSolve} 
-                className="basic-btn primary-btn" 
-                style={{ borderColor: 'var(--color-success)', color: 'var(--color-success)', marginLeft: '1rem' }}
-              >
-                Override (Skip)
-              </button>
-            )}
           </div>
         </div>
       </div>
