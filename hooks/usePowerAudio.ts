@@ -1,13 +1,22 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 export function usePowerAudio() {
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+    };
+  }, []);
 
   const getAudioContext = (): AudioContext => {
     if (typeof window === "undefined") {
       throw new Error("AudioContext is only available in the browser");
     }
-    if (!audioCtxRef.current) {
+    if (!audioCtxRef.current || audioCtxRef.current.state === "closed") {
       const AudioContextClass =
         window.AudioContext || (window as any).webkitAudioContext;
       audioCtxRef.current = new AudioContextClass();

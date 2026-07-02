@@ -475,16 +475,43 @@ class SciFiAudioManager {
     try {
       this.bgmOscs.forEach(osc => {
         try { osc.stop(); } catch (e) { }
+        try { osc.disconnect(); } catch (e) { }
       });
+      this.bgmOscs = [];
+
       if (this.bgmLfo) {
         try { this.bgmLfo.stop(); } catch (e) { }
+        try { this.bgmLfo.disconnect(); } catch (e) { }
+        this.bgmLfo = null;
       }
+
       if (this.bgmSource) {
         try { this.bgmSource.stop(); } catch (e) { }
+        try { this.bgmSource.disconnect(); } catch (e) { }
+        this.bgmSource = null;
       }
-      if (this.ctx) {
-        this.ctx.close();
+
+      if (this.synthBgmGain) {
+        try { this.synthBgmGain.disconnect(); } catch (e) { }
       }
+      if (this.customBgmGain) {
+        try { this.customBgmGain.disconnect(); } catch (e) { }
+      }
+      if (this.bgmGain) {
+        try { this.bgmGain.disconnect(); } catch (e) { }
+      }
+      if (this.sfxGain) {
+        try { this.sfxGain.disconnect(); } catch (e) { }
+      }
+      if (this.masterGain) {
+        try { this.masterGain.disconnect(); } catch (e) { }
+      }
+
+      if (this.ctx && this.ctx.state !== "closed") {
+        this.ctx.close().catch(() => {});
+        this.ctx = null;
+      }
+      this.isInitialized = false;
     } catch (e) {
       console.warn("Cleanup warning: ", e);
     }
@@ -499,7 +526,16 @@ export function AudioProvider({ children }: { children: React.ReactNode }) {
   // Initialize manager on client mount
   useEffect(() => {
     managerRef.current = new SciFiAudioManager();
+
+    const handleUnload = () => {
+      if (managerRef.current) {
+        managerRef.current.destroy();
+      }
+    };
+    window.addEventListener("beforeunload", handleUnload);
+
     return () => {
+      window.removeEventListener("beforeunload", handleUnload);
       if (managerRef.current) {
         managerRef.current.destroy();
       }
