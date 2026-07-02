@@ -369,26 +369,26 @@ export default function HuntPage() {
       {/* Floating HUD Inventory Hamburger Trigger */}
       <button 
         onClick={() => setIsInventoryOpen(!isInventoryOpen)}
-        className="fixed top-4 left-4 sm:top-6 sm:left-6 z-35 flex items-center gap-3 px-4.5 py-2 bg-gradient-to-r from-zinc-950/90 via-zinc-900/90 to-zinc-950/90 border border-zinc-800/60 hover:border-cyan-400/80 text-zinc-300 hover:text-cyan-300 rounded-xl cursor-pointer transition-all duration-300 shadow-[0_4px_24px_rgba(0,0,0,0.5),_inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:-translate-y-0.5 backdrop-blur-md font-mono text-[10px] sm:text-[11px] tracking-[0.2em] font-extrabold select-none group active:scale-95"
+        className="fixed top-4 left-4 sm:top-6 sm:left-6 z-35 flex items-center gap-3 px-4.5 py-2 bg-gradient-to-r from-zinc-950/90 via-zinc-900/90 to-zinc-950/90 border border-zinc-800/60 hover:border-amber-500/80 text-zinc-300 hover:text-amber-400 rounded-xl cursor-pointer transition-all duration-300 shadow-[0_4px_24px_rgba(0,0,0,0.5),_inset_0_1px_1px_rgba(255,255,255,0.05)] hover:shadow-[0_0_20px_rgba(245,158,11,0.3)] hover:-translate-y-0.5 backdrop-blur-md font-mono text-[10px] sm:text-[11px] tracking-[0.2em] font-extrabold select-none group active:scale-95"
       >
         <span className="relative flex items-center justify-center w-4 h-4">
           {/* Pulsing indicator when there are solved items */}
           {Object.keys(completedList).filter(k => parseInt(k, 10) <= 8 && completedList[k]).length > 0 && (
             <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
             </span>
           )}
           <span className="transition-transform duration-300 group-hover:rotate-180">
-            {isInventoryOpen ? <X size={15} className="text-cyan-400" /> : <Menu size={15} className="text-zinc-400 group-hover:text-cyan-400" />}
+            {isInventoryOpen ? <X size={15} className="text-amber-400" /> : <Menu size={15} className="text-zinc-400 group-hover:text-amber-400" />}
           </span>
         </span>
         
-        <span className="bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent group-hover:from-cyan-300 group-hover:to-teal-300 transition-all duration-300">
+        <span className="bg-gradient-to-r from-zinc-100 to-zinc-300 bg-clip-text text-transparent group-hover:from-amber-300 group-hover:to-yellow-400 transition-all duration-300">
           INVENTORY
         </span>
         
-        <span className="font-mono text-[10px] sm:text-[11px] font-black text-cyan-400 bg-cyan-950/40 px-2 py-0.5 border border-cyan-500/30 rounded-lg shadow-[inset_0_0_8px_rgba(6,182,212,0.25)] group-hover:border-cyan-400/60 transition-all duration-300">
+        <span className="font-mono text-[10px] sm:text-[11px] font-black text-amber-400 bg-amber-950/40 px-2 py-0.5 border border-amber-500/30 rounded-lg shadow-[inset_0_0_8px_rgba(245,158,11,0.25)] group-hover:border-amber-400/60 transition-all duration-300">
           {Object.keys(completedList).filter(k => parseInt(k, 10) <= 8 && completedList[k]).length}/8
         </span>
       </button>
@@ -397,13 +397,13 @@ export default function HuntPage() {
       {isInventoryOpen && (
         <section 
           id="inventory-section"
-          className="fixed top-16 left-4 sm:top-20 sm:left-6 z-30 bg-zinc-950/90 border border-zinc-800/80 rounded-2xl px-4 py-3 backdrop-blur-lg shadow-[0_12px_40px_rgba(0,0,0,0.85)] flex flex-col gap-2.5 w-[calc(100%-2rem)] sm:w-auto max-w-sm sm:max-w-md transition-all duration-300 animate-[fadeIn_0.3s_ease-out] origin-top-left"
+          className="fixed top-16 left-4 sm:top-20 sm:left-6 z-30 bg-zinc-950/95 border border-zinc-800/80 hover:border-amber-500/40 rounded-2xl px-4 py-3 backdrop-blur-lg shadow-[0_12px_40px_rgba(0,0,0,0.85),_0_0_30px_rgba(245,158,11,0.05)] flex flex-col gap-2.5 w-[calc(100%-2rem)] sm:w-auto max-w-sm sm:max-w-md transition-all duration-300 animate-[fadeIn_0.3s_ease-out] origin-top-left"
         >
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-cyan-500/[0.02] pointer-events-none rounded-2xl" />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-amber-500/[0.03] pointer-events-none rounded-2xl" />
           
           {/* Title and stats bar */}
           <div className="flex items-center justify-between w-full border-b border-zinc-800/50 pb-1.5 text-[9px] tracking-widest font-mono text-zinc-400">
-            <span className="uppercase tracking-[0.2em] text-zinc-300 font-bold">
+            <span className="uppercase tracking-[0.2em] bg-gradient-to-r from-amber-200 to-yellow-400 bg-clip-text text-transparent font-bold">
               ARCHIVE RECORDS
             </span>
           </div>
@@ -421,15 +421,15 @@ export default function HuntPage() {
                     key={num}
                     id={`inventory-slot-${num}`}
                     onClick={() => setSelectedSymbolCase(num)}
-                    className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center border border-cyan-500/20 bg-cyan-950/10 hover:bg-cyan-950/20 rounded-xl transition-all duration-300 hover:border-cyan-400/50 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)] hover:-translate-y-0.5 cursor-pointer group select-none flex-shrink-0"
+                    className="relative w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 flex items-center justify-center border border-amber-500/20 bg-amber-950/10 hover:bg-amber-950/20 rounded-xl transition-all duration-300 hover:border-amber-400/50 hover:shadow-[0_0_15px_rgba(245,158,11,0.25)] hover:-translate-y-0.5 cursor-pointer group select-none flex-shrink-0"
                   >
                     <img
                       src={`/Symbols/cf${i + 1}.png`}
                       alt={`Case ${num} Symbol`}
-                      className="w-5 h-5 sm:w-7 sm:h-7 md:w-9 md:h-9 object-contain filter drop-shadow-[0_0_6px_rgba(6,182,212,0.4)]"
+                      className="w-5 h-5 sm:w-7 sm:h-7 md:w-9 md:h-9 object-contain filter drop-shadow-[0_0_6px_rgba(245,158,11,0.45)]"
                     />
                     {/* Subtle hover tooltip */}
-                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-zinc-950 border border-zinc-800 text-[8px] tracking-wider text-cyan-400 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap font-mono z-40">
+                    <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-0.5 bg-zinc-950 border border-zinc-800 text-[8px] tracking-wider text-amber-400 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap font-mono z-40">
                       CF-{num}
                     </div>
                   </div>
@@ -453,7 +453,7 @@ export default function HuntPage() {
         </section>
       )}
 
-      <h1 className="relative z-10 font-serif text-2xl md:text-4xl tracking-[0.2em] text-zinc-100 uppercase select-none mb-12 md:mb-16">
+      <h1 className="relative z-10 font-serif text-4xl sm:text-5xl md:text-6xl tracking-[0.2em] bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-500 bg-clip-text text-transparent uppercase select-none mb-12 md:mb-16">
         Choose Case File
       </h1>
 
