@@ -242,7 +242,7 @@ export default function Preloader() {
           />
           <img
             ref={logoRef}
-            src="/preloader-assets/Logo.png"
+            src="/preloader-assets/Logo.avif"
             alt="IEEE CS MUJ Logo"
             className="logo-img relative w-24 h-24 md:w-28 md:h-28 object-contain"
             style={{ opacity: 0, visibility: "hidden" }}

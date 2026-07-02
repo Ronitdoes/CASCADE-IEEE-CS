@@ -160,10 +160,10 @@ export function FirstPersonView({ player, anomalies, allSolved, currentMap }: Fi
       <svg width="100%" height="100%" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet" style={{ background: 'var(--sky-color)', border: '4px solid var(--wall-stroke)', maxHeight: '100%', maxWidth: '100%' }}>
         <defs>
           <pattern id="wall-front-texture" patternUnits="userSpaceOnUse" width="400" height="400">
-            <image href="/case-file-01/wall-texture.png" x="0" y="0" width="400" height="400" preserveAspectRatio="none" />
+            <image href="/case-file-01/wall-texture.avif" x="0" y="0" width="400" height="400" preserveAspectRatio="none" />
           </pattern>
           <pattern id="wall-side-texture" patternUnits="userSpaceOnUse" width="400" height="400">
-            <image href="/case-file-01/wall-texture.png" x="0" y="0" width="400" height="400" preserveAspectRatio="none" />
+            <image href="/case-file-01/wall-texture.avif" x="0" y="0" width="400" height="400" preserveAspectRatio="none" />
             <rect width="400" height="400" fill="rgba(0, 0, 0, 0.65)" />
           </pattern>
         </defs>

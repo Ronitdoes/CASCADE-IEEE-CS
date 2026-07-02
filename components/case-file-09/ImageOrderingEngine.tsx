@@ -22,7 +22,7 @@ export function ImageOrderingEngine({ config, onSolve }: ImageOrderingEngineProp
   // Helper to initialize and shuffle the puzzle pieces
   const shuffleItems = () => {
     const baseItems: SortableItem[] = config.imageFiles.map((file) => {
-      // e.g. "cf1.png" -> id is "cf1"
+      // e.g. "cf1.avif" -> id is "cf1"
       const id = file.replace(/\.[^/.]+$/, "");
       return {
         id,

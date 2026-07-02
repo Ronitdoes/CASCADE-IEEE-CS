@@ -34,8 +34,8 @@ const dialogueMap: Record<string, Record<number, string>> = {
 }
 
 const ImageMap: Record<string, string> = {
-  crow: '/case-file-07/agent.png',
-  archivist: '/case-file-07/curator.png',
+  crow: '/case-file-07/agent.avif',
+  archivist: '/case-file-07/curator.avif',
 }
 
 export function EchoGuide({ character, actProgress }: Props) {
@@ -61,7 +61,7 @@ export function EchoGuide({ character, actProgress }: Props) {
     return () => clearTimeout(t)
   }, [actProgress, effectiveCharacter])
 
-  const imageSrc = ImageMap[effectiveCharacter] || '/case-file-07/raven.png'
+  const imageSrc = ImageMap[effectiveCharacter] || '/case-file-07/raven.avif'
 
   return (
     <div

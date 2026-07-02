@@ -28,7 +28,7 @@ export function PreloaderProvider({ children }: { children: React.ReactNode }) {
 
   // Define assets to preload
   const imageAssets = [
-    "/preloader-assets/Logo.png",
+    "/preloader-assets/Logo.avif",
     ...storytellingSlides.map(slide => encodeURI(slide.image))
   ];
   

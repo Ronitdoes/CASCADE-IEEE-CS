@@ -24,7 +24,7 @@ interface Slide {
 
 export const storytellingSlides: Slide[] = [
   {
-    image: "/Scroll-Images/01.png",
+    image: "/Scroll-Images/01.avif",
     title: "IMAGE 1 — NULL ARCHIVE",
     lines: [
       { text: "THE LORE", type: "large" },
@@ -39,7 +39,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/02.png",
+    image: "/Scroll-Images/02.avif",
     title: "IMAGE 2 — THE BREACH",
     lines: [
       { text: "The breach lasted exactly seventeen seconds.", type: "normal" },
@@ -54,7 +54,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/03.png",
+    image: "/Scroll-Images/03.avif",
     title: "IMAGE 3 — OMEGA ANALYSTS",
     lines: [
       { text: "Conventional recovery teams have failed.", type: "normal" },
@@ -68,7 +68,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/04.png",
+    image: "/Scroll-Images/04.avif",
     title: "IMAGE 4 — CORRUPTED FILES",
     lines: [
       { text: "The archive contains dozens of anomaly reports.", type: "normal" },
@@ -82,7 +82,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/05.png",
+    image: "/Scroll-Images/05.avif",
     title: "IMAGE 5 — TIMELINE INSTABILITY",
     lines: [
       { text: "Initial analysis revealed a disturbing pattern.", type: "normal" },
@@ -95,7 +95,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/06.png",
+    image: "/Scroll-Images/06.avif",
     title: "IMAGE 6 — FIRST GLIMPSE OF THE NULL EVENT",
     lines: [
       { text: "Several recovered records reference a single term.", type: "normal" },
@@ -110,7 +110,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/07.png",
+    image: "/Scroll-Images/07.avif",
     title: "IMAGE 7 — THE TRUTH IS HIDDEN",
     lines: [
       { text: "Every recovered case file restores part of the archive.", type: "normal" },
@@ -121,7 +121,7 @@ export const storytellingSlides: Slide[] = [
     ]
   },
   {
-    image: "/Scroll-Images/08.png",
+    image: "/Scroll-Images/08.avif",
     title: "IMAGE 8 — START OF THE HUNT",
     lines: [
       { text: "The archive is unstable.", type: "normal" },

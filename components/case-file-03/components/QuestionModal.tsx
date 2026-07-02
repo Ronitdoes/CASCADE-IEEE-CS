@@ -1224,7 +1224,7 @@ function FlameImagePuzzle({ activeAnomaly, onSolve }: FlameImagePuzzleProps) {
               style={{
                 width: '100%',
                 height: '100%',
-                backgroundImage: 'url("/case-03/mystical-flame.jpg")',
+                backgroundImage: 'url("/case-03/mystical-flame.avif")',
                 backgroundSize: '400% 400%',
                 backgroundPosition: `${xPercent}% ${yPercent}%`,
                 border: isSelected 
@@ -1247,7 +1247,7 @@ function FlameImagePuzzle({ activeAnomaly, onSolve }: FlameImagePuzzleProps) {
             style={{
               position: 'absolute',
               inset: 0,
-              backgroundImage: 'url("/case-03/mystical-flame.jpg")',
+              backgroundImage: 'url("/case-03/mystical-flame.avif")',
               backgroundSize: 'cover',
               opacity: 0.85,
               pointerEvents: 'none',

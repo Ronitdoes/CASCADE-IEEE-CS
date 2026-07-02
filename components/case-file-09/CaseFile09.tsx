@@ -18,14 +18,14 @@ const CASE_9_PUZZLE: PuzzleConfig = {
     "Reconstruct the final archive symbol by dragging and arranging all eight collectible fragments into their correct positions.",
   imageFolder: "/Symbols",
   imageFiles: [
-    "cf1.png",
-    "cf2.png",
-    "cf3.png",
-    "cf4.png",
-    "cf5.png",
-    "cf6.png",
-    "cf7.png",
-    "cf8.png",
+    "cf1.avif",
+    "cf2.avif",
+    "cf3.avif",
+    "cf4.avif",
+    "cf5.avif",
+    "cf6.avif",
+    "cf7.avif",
+    "cf8.avif",
   ],
   correctOrder: [
     "cf1",
@@ -495,7 +495,7 @@ export default function CaseFile09() {
     <div
       className="min-h-screen w-full text-white bg-cover bg-center bg-no-repeat flex flex-col relative overflow-x-hidden font-mono"
       style={{
-        backgroundImage: "url('/Hunt/Background-Image.png')",
+        backgroundImage: "url('/Hunt/Background-Image.avif')",
       }}
     >
       {/* Background cinematic dark overlays */}

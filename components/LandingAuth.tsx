@@ -34,7 +34,7 @@ export default function LandingAuth({ onSubmit }: LandingAuthProps) {
       {/* Background Poster */}
       <div
         className="absolute inset-0 z-0 bg-cover bg-center"
-        style={{ backgroundImage: "url('/poster.jpeg')" }}
+        style={{ backgroundImage: "url('/poster.avif')" }}
       />
       {/* Dark overlay for ambient contrast & readability */}
       <div className="absolute inset-0 z-0 bg-black/65 pointer-events-none" />
