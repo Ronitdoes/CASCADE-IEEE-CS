@@ -13,6 +13,8 @@ export interface MockTransmission {
   updatedAt: Date
   resendCount: number
   lastResentAt: Date | null
+  deliveryStatus?: string | null
+  deliveryError?: string | null
 }
 
 // In-memory global store to share across local API endpoints during mock/demo mode

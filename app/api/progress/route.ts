@@ -66,39 +66,22 @@ export async function POST(request: NextRequest) {
 
     const valString = JSON.stringify(value)
 
-    const existing = await db
-      .select()
-      .from(userProgress)
-      .where(
-        and(
-          eq(userProgress.userId, session.userId),
-          eq(userProgress.caseId, caseId),
-          eq(userProgress.progressKey, key)
-        )
-      )
-
-    if (existing.length > 0) {
-      await db
-        .update(userProgress)
-        .set({
-          progressValue: valString,
-          updatedAt: new Date()
-        })
-        .where(
-          and(
-            eq(userProgress.userId, session.userId),
-            eq(userProgress.caseId, caseId),
-            eq(userProgress.progressKey, key)
-          )
-        )
-    } else {
-      await db.insert(userProgress).values({
+    await db
+      .insert(userProgress)
+      .values({
         userId: session.userId,
         caseId: caseId,
         progressKey: key,
-        progressValue: valString
+        progressValue: valString,
+        updatedAt: new Date()
       })
-    }
+      .onConflictDoUpdate({
+        target: [userProgress.userId, userProgress.caseId, userProgress.progressKey],
+        set: {
+          progressValue: valString,
+          updatedAt: new Date()
+        }
+      })
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isDbAvailable, db } from '@/db'
 import { emailTransmissions } from '@/db/schema'
 import { mockTransmissions } from '@/app/hunt/case-07/lib/mockDb'
-import { sendClassifiedEmail } from '@/app/hunt/case-07/lib/brevo'
+import { queueMailDeliveryJob } from '@/app/hunt/case-07/lib/brevo'
 import { DeadlightTransmissionEmail } from '@/app/hunt/case-07/emails/case-07'
 import { render } from '@react-email/components'
 import React from 'react'
 import { eq, desc } from 'drizzle-orm'
 import { getSession, saveDemoState } from '@/app/hunt/case-07/lib/session'
 import { getClientIp, isRateLimited, verifyCsrf } from '@/app/hunt/case-07/lib/rateLimit'
+
 
 export async function POST(request: NextRequest) {
   try {
@@ -67,6 +68,7 @@ export async function POST(request: NextRequest) {
         .from(emailTransmissions)
         .where(eq(emailTransmissions.email, cleanedEmail))
         .orderBy(desc(emailTransmissions.sentAt))
+        .limit(1)
       
       record = records[0]
     } else {
@@ -179,23 +181,15 @@ N=14 O=15 P=16 Q=17 R=18 S=19 T=20 U=21 V=22 W=23 X=24 Y=25 Z=26
 PROJECT NULL // SITE KENNEDY COMMAND HQ // 1996
 `
 
-    // Re-deliver email
-    const delivery = await sendClassifiedEmail({
-      to: record.email,
-      subject: '[CLASSIFIED] Recovered Transmission — Site Kennedy (Resend)',
-      html: emailHtml,
-      text: emailText,
-    })
-
-    // Update resend tracking info in database / mock store
+    // Update resend tracking info immediately to queued state
     if (isDbAvailable) {
       await db
         .update(emailTransmissions)
         .set({
           resendCount: nextResendCount,
           lastResentAt,
-          deliveryStatus: delivery.success ? 'success' : 'failed',
-          deliveryError: delivery.error || null,
+          deliveryStatus: 'queued',
+          deliveryError: null,
           updatedAt: new Date(),
         })
         .where(eq(emailTransmissions.id, record.id))
@@ -204,21 +198,32 @@ PROJECT NULL // SITE KENNEDY COMMAND HQ // 1996
         ...record,
         resendCount: nextResendCount,
         lastResentAt,
-        deliveryStatus: delivery.success ? 'success' : 'failed',
-        deliveryError: delivery.error || null,
+        deliveryStatus: 'queued',
+        deliveryError: null,
         updatedAt: new Date(),
       })
     }
 
-    if (!delivery.success) {
-      return NextResponse.json(
-        { success: false, message: `Resend failed: ${delivery.error || 'delivery error'}` },
-        { status: 500 }
-      )
-    }
+    // Queue background delivery job asynchronously without awaiting
+    queueMailDeliveryJob({
+      transmissionId: record.id,
+      to: record.email,
+      subject: '[CLASSIFIED] Recovered Transmission — Site Kennedy (Resend)',
+      html: emailHtml,
+      text: emailText,
+      db,
+      isDbAvailable,
+      emailTransmissions,
+      mockTransmissions,
+      extraUpdates: {
+        resendCount: nextResendCount,
+        lastResentAt,
+      },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
+
     console.error('Transmission resend API exception:', error)
     return NextResponse.json(
       { success: false, message: 'Internal server error.' },

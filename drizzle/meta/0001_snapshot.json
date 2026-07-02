@@ -1,6 +1,6 @@
 {
-  "id": "9598717b-c92e-46c4-8044-06a0f5c68793",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "e6cf870d-5151-488c-b809-cac3737a2467",
+  "prevId": "9598717b-c92e-46c4-8044-06a0f5c68793",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -281,59 +281,6 @@
         "fragments_user_id_users_id_fk": {
           "name": "fragments_user_id_users_id_fk",
           "tableFrom": "fragments",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.leaderboard": {
-      "name": "leaderboard",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "fragment_count": {
-          "name": "fragment_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": 0
-        },
-        "completion_timestamp": {
-          "name": "completion_timestamp",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "hint_count": {
-          "name": "hint_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "default": 0
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "leaderboard_user_id_users_id_fk": {
-          "name": "leaderboard_user_id_users_id_fk",
-          "tableFrom": "leaderboard",
           "tableTo": "users",
           "columnsFrom": [
             "user_id"

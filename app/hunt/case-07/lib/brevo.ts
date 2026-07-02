@@ -94,3 +94,89 @@ ${text}
     return { success: false, error: err.message || String(err), method: 'local_log' }
   }
 }
+
+export function queueMailDeliveryJob({
+  transmissionId,
+  to,
+  subject,
+  html,
+  text,
+  db,
+  isDbAvailable,
+  emailTransmissions,
+  mockTransmissions,
+  extraUpdates = {},
+}: {
+  transmissionId: string
+  to: string
+  subject: string
+  html: string
+  text: string
+  db: any
+  isDbAvailable: boolean
+  emailTransmissions: any
+  mockTransmissions: Map<string, any>
+  extraUpdates?: Record<string, any>
+}) {
+  // Fire and forget asynchronous mail delivery job
+  Promise.resolve().then(async () => {
+    try {
+      const delivery = await sendClassifiedEmail({ to, subject, html, text })
+
+      const updatePayload = {
+        ...extraUpdates,
+        deliveryStatus: delivery.success ? 'success' : 'failed',
+        deliveryError: delivery.error || null,
+        updatedAt: new Date(),
+      }
+
+      if (isDbAvailable) {
+        const { eq } = await import('drizzle-orm')
+        await db
+          .update(emailTransmissions)
+          .set(updatePayload)
+          .where(eq(emailTransmissions.id, transmissionId))
+      } else {
+        const record = mockTransmissions.get(transmissionId)
+        if (record) {
+          mockTransmissions.set(transmissionId, {
+            ...record,
+            ...updatePayload,
+          })
+        }
+      }
+
+      if (!delivery.success) {
+        console.error(`[MailQueue] Delivery failed for transmission ${transmissionId}:`, delivery.error)
+      }
+    } catch (err: any) {
+      console.error(`[MailQueue] Execution exception for transmission ${transmissionId}:`, err)
+      const errorPayload = {
+        ...extraUpdates,
+        deliveryStatus: 'failed',
+        deliveryError: err.message || String(err),
+        updatedAt: new Date(),
+      }
+      if (isDbAvailable) {
+        try {
+          const { eq } = await import('drizzle-orm')
+          await db
+            .update(emailTransmissions)
+            .set(errorPayload)
+            .where(eq(emailTransmissions.id, transmissionId))
+        } catch (dbErr) {
+          console.error('[MailQueue] Failed to save error status to DB:', dbErr)
+        }
+      } else {
+        const record = mockTransmissions.get(transmissionId)
+        if (record) {
+          mockTransmissions.set(transmissionId, {
+            ...record,
+            ...errorPayload,
+          })
+        }
+      }
+    }
+  })
+}
+

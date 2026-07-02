@@ -1,1 +1,0 @@
--- Initial migration alignment for existing database schema.

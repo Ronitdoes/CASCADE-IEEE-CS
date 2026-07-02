@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { isDbAvailable, db } from '@/db'
 import { emailTransmissions } from '@/db/schema'
 import { setSession } from '@/app/hunt/case-07/lib/session'
-import { sendClassifiedEmail } from '@/app/hunt/case-07/lib/brevo'
+import { queueMailDeliveryJob } from '@/app/hunt/case-07/lib/brevo'
 import { mockTransmissions, MockTransmission } from '@/app/hunt/case-07/lib/mockDb'
 import { DeadlightTransmissionEmail } from '@/app/hunt/case-07/emails/case-07'
 import { render } from '@react-email/components'
@@ -11,6 +11,7 @@ import React from 'react'
 import { eq, and, gte } from 'drizzle-orm'
 import crypto from 'crypto'
 import { getClientIp, isRateLimited, verifyCsrf } from '@/app/hunt/case-07/lib/rateLimit'
+
 
 const registerSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
@@ -146,6 +147,8 @@ export async function POST(request: NextRequest) {
       updatedAt: new Date(),
       resendCount: 0,
       lastResentAt: null,
+      deliveryStatus: 'queued',
+      deliveryError: null,
     }
 
     if (isDbAvailable) {
@@ -161,6 +164,8 @@ export async function POST(request: NextRequest) {
         sentAt: newRecord.sentAt,
         createdAt: newRecord.createdAt,
         updatedAt: newRecord.updatedAt,
+        deliveryStatus: 'queued',
+        deliveryError: null,
       })
     } else {
       mockTransmissions.set(transmissionId, newRecord)
@@ -238,39 +243,21 @@ N=14 O=15 P=16 Q=17 R=18 S=19 T=20 U=21 V=22 W=23 X=24 Y=25 Z=26
 PROJECT NULL // SITE KENNEDY COMMAND HQ // 1996
 `
 
-    // Deliver email
-    const delivery = await sendClassifiedEmail({
+    // Queue background delivery job asynchronously without awaiting
+    queueMailDeliveryJob({
+      transmissionId,
       to: email,
       subject: '[CLASSIFIED] Recovered Transmission — Site Kennedy',
       html: emailHtml,
       text: emailText,
+      db,
+      isDbAvailable,
+      emailTransmissions,
+      mockTransmissions,
     })
 
-    // Log delivery metadata in DB / Mock store
-    if (isDbAvailable) {
-      await db
-        .update(emailTransmissions)
-        .set({
-          deliveryStatus: delivery.success ? 'success' : 'failed',
-          deliveryError: delivery.error || null,
-        })
-        .where(eq(emailTransmissions.id, transmissionId))
-    } else {
-      const record = mockTransmissions.get(transmissionId)
-      if (record) {
-        mockTransmissions.set(transmissionId, {
-          ...record,
-          deliveryStatus: delivery.success ? 'success' : 'failed',
-          deliveryError: delivery.error || null,
-        } as any)
-      }
-    }
-
-    if (!delivery.success) {
-      console.error('Email transmission warning:', delivery.error)
-    }
-
     return NextResponse.json({ success: true })
+
   } catch (error: any) {
     console.error('Transmission send API exception:', error)
     return NextResponse.json(

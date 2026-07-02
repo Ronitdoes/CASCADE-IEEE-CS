@@ -46,6 +46,9 @@ function getSimilarity(s1: string, s2: string): number {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const caseId = searchParams.get('caseId')
+  const puzzleKey = searchParams.get('puzzleKey')
+  const limitParam = Math.min(Math.max(parseInt(searchParams.get('limit') || '100', 10) || 100, 1), 100)
+  const offsetParam = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0)
 
   if (!caseId) {
     return NextResponse.json({ success: false, error: 'caseId parameter required' }, { status: 400 })
@@ -56,12 +59,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const whereConditions = puzzleKey
+      ? and(eq(caseQuestions.caseId, caseId), eq(caseQuestions.puzzleKey, puzzleKey))
+      : eq(caseQuestions.caseId, caseId)
+
     const rows = await db.select({
       id: caseQuestions.id,
       caseId: caseQuestions.caseId,
       puzzleKey: caseQuestions.puzzleKey,
       question: caseQuestions.question
-    }).from(caseQuestions).where(eq(caseQuestions.caseId, caseId))
+    })
+    .from(caseQuestions)
+    .where(whereConditions)
+    .limit(limitParam)
+    .offset(offsetParam)
 
     return NextResponse.json({ success: true, questions: rows })
   } catch (error) {

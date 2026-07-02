@@ -92,12 +92,13 @@ export async function sendEmail({ to, subject, text, html }: EmailOptions): Prom
   }
 
   // 3. Fallback/Local Log Method (Offline / Dev environment)
+  const isProd = process.env.NODE_ENV === 'production'
+  if (isProd) {
+    console.error('[EMAIL DISPATCH ERROR] No email service provider (Brevo API Key / SMTP) configured in production environment.')
+    return { success: false, method: 'none', error: 'No email service provider configured in production.' }
+  }
+
   try {
-    const isProd = process.env.NODE_ENV === 'production'
-    if (isProd) {
-      console.log(`\n[LOCAL EMAIL SIMULATOR] Simulated email to ${to} (logging to disk disabled in production)`)
-      return { success: true, method: 'local_log' }
-    }
     const logDir = path.join(process.cwd(), 'artifacts')
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true })
@@ -120,3 +121,4 @@ ${text}
     return { success: false, method: 'local_log', error: err.message || String(err) }
   }
 }
+

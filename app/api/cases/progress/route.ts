@@ -78,35 +78,22 @@ export async function POST(request: NextRequest) {
     // Write to DB if session is active and DB is available
     if (isDbAvailable && session?.userId && timelineId) {
       try {
-        const existing = await db
-          .select()
-          .from(timelineProgress)
-          .where(
-            and(
-              eq(timelineProgress.userId, session.userId),
-              eq(timelineProgress.timelineId, timelineId)
-            )
-          );
-          
-        if (existing.length > 0) {
-          await db
-            .update(timelineProgress)
-            .set({ status: "completed", completedAt: new Date() })
-            .where(
-              and(
-                eq(timelineProgress.userId, session.userId),
-                eq(timelineProgress.timelineId, timelineId)
-              )
-            );
-        } else {
-          await db.insert(timelineProgress).values({
+        await db
+          .insert(timelineProgress)
+          .values({
             userId: session.userId,
             timelineId: timelineId,
             status: "completed",
             completedAt: new Date(),
             fragmentRecovered: false,
+          })
+          .onConflictDoUpdate({
+            target: [timelineProgress.userId, timelineProgress.timelineId],
+            set: {
+              status: "completed",
+              completedAt: new Date(),
+            },
           });
-        }
       } catch (error) {
         console.error("Failed to update database progress:", error);
       }

@@ -2,8 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, saveDemoState } from '@/app/hunt/case-07/lib/session'
 import { isDbAvailable, db } from '@/db'
-import { timelineProgress, leaderboard } from '@/db/schema'
-import { eq, desc, asc } from 'drizzle-orm'
+import { timelineProgress } from '@/db/schema'
+import { eq } from 'drizzle-orm'
 import { timelines } from '@/app/hunt/case-07/lib/timelines'
 
 export async function GET() {
@@ -29,17 +29,6 @@ export async function GET() {
 
     if (isDbAvailable) {
       try {
-        // Fetch rank by sorting leaderboard
-        const lbList = await db
-          .select()
-          .from(leaderboard)
-          .orderBy(desc(leaderboard.fragmentCount), asc(leaderboard.completionTimestamp))
-
-        const userIndex = lbList.findIndex((e: any) => e.userId === session.userId)
-        if (userIndex !== -1) {
-          rank = userIndex + 1
-        }
-
         // Fetch actual timeline progress from database
         const progressList = await db
           .select()
@@ -109,21 +98,9 @@ export async function POST(request: NextRequest) {
 
     const { action } = body as Record<string, unknown>
     if (action === 'use-hint') {
-      if (isDbAvailable) {
-        // Increment hint count in Drizzle
-        const lbRows = await db.select().from(leaderboard).where(eq(leaderboard.userId, session.userId))
-        const lb = lbRows[0]
-        if (lb) {
-          await db.update(leaderboard).set({ hintCount: (lb.hintCount ?? 0) + 1 }).where(eq(leaderboard.userId, session.userId))
-        } else {
-          await db.insert(leaderboard).values({ userId: session.userId, hintCount: 1 })
-        }
-      } else {
-        // Increment hint count in cookies
-        session.hints += 1
-        await saveDemoState(session)
-      }
-      return NextResponse.json({ success: true, hints: session.hints + (isDbAvailable ? 0 : 1) })
+      session.hints += 1
+      await saveDemoState(session)
+      return NextResponse.json({ success: true, hints: session.hints })
     }
 
     return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession, saveDemoState } from '@/app/hunt/case-07/lib/session'
 import { isDbAvailable, db } from '@/db'
-import { fragments, timelineProgress, leaderboard } from '@/db/schema'
+import { fragments, timelineProgress } from '@/db/schema'
 import { and, eq } from 'drizzle-orm'
 
 import { timelines } from '@/app/hunt/case-07/lib/timelines'
@@ -27,64 +27,39 @@ export async function POST(request: NextRequest) {
 
     if (isDbAvailable) {
       try {
-        // 1. Insert into fragments table
-        // First check if already collected to prevent duplicates
-        const existingRows = await db
-          .select()
-          .from(fragments)
-          .where(and(eq(fragments.userId, session.userId), eq(fragments.timelineId, timelineId)))
-        const existing = existingRows[0]
-
-        if (!existing) {
-          await db.insert(fragments).values({
-            userId: session.userId,
-            timelineId: timelineId,
-            recoveredAt: new Date(),
-            evidenceLogUnlocked: true,
-          })
-        }
-
-        // 2. Update timelineProgress status
-        await db
-          .update(timelineProgress)
-          .set({
-            status: 'completed',
-            completedAt: new Date(),
-            fragmentRecovered: true,
-          })
-          .where(and(eq(timelineProgress.userId, session.userId), eq(timelineProgress.timelineId, timelineId)))
-
-        // 3. Update leaderboard
-        const allRecovered = await db
-          .select()
-          .from(fragments)
-          .where(eq(fragments.userId, session.userId))
-        
-        const count = allRecovered.length
-
-        const lbRows = await db
-          .select()
-          .from(leaderboard)
-          .where(eq(leaderboard.userId, session.userId))
-        const lb = lbRows[0]
-
-        const isAllDone = count === 9
-
-        if (lb) {
-          await db
-            .update(leaderboard)
-            .set({
-              fragmentCount: count,
-              completionTimestamp: isAllDone ? new Date() : lb.completionTimestamp,
+        await db.transaction(async (tx: any) => {
+          // 1. Insert into fragments table atomically
+          await tx
+            .insert(fragments)
+            .values({
+              userId: session.userId,
+              timelineId: timelineId,
+              recoveredAt: new Date(),
+              evidenceLogUnlocked: true,
             })
-            .where(eq(leaderboard.userId, session.userId))
-        } else {
-          await db.insert(leaderboard).values({
-            userId: session.userId,
-            fragmentCount: count,
-            completionTimestamp: isAllDone ? new Date() : null,
-          })
-        }
+            .onConflictDoNothing({
+              target: [fragments.userId, fragments.timelineId],
+            })
+
+          // 2. Upsert timelineProgress status atomically
+          await tx
+            .insert(timelineProgress)
+            .values({
+              userId: session.userId,
+              timelineId: timelineId,
+              status: 'completed',
+              completedAt: new Date(),
+              fragmentRecovered: true,
+            })
+            .onConflictDoUpdate({
+              target: [timelineProgress.userId, timelineProgress.timelineId],
+              set: {
+                status: 'completed',
+                completedAt: new Date(),
+                fragmentRecovered: true,
+              },
+            })
+        })
       } catch (dbError) {
         console.error('Database error in fragment collection:', dbError)
       }

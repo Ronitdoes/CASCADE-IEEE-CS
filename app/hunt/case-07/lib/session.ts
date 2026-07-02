@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { cookies } from 'next/headers'
 import { isDbAvailable, db } from '@/db'
-import { users, timelineProgress, puzzleEvents, fragments, leaderboard } from '@/db/schema'
+import { users, timelineProgress, puzzleEvents, fragments } from '@/db/schema'
 import { eq, and } from 'drizzle-orm'
 import { timelines } from './timelines'
 import crypto from 'crypto'
@@ -84,7 +84,7 @@ export async function getSession(): Promise<SessionData | null> {
 
   // Live Database Mode: query Drizzle ORM
   try {
-    const userRows = await db.select().from(users).where(eq(users.id, sessionId))
+    const userRows = await db.select().from(users).where(eq(users.id, sessionId)).limit(1)
     let user = userRows[0]
     
     if (!user) {
@@ -100,16 +100,6 @@ export async function getSession(): Promise<SessionData | null> {
           name: 'Demo Agent',
           email: 'agent@aetherion.org',
           createdAt: new Date(),
-        }
-
-        // Initialize leaderboard entry if missing
-        const lbRows = await db.select().from(leaderboard).where(eq(leaderboard.userId, sessionId))
-        if (lbRows.length === 0) {
-          await db.insert(leaderboard).values({
-            userId: sessionId,
-            fragmentCount: 0,
-            hintCount: 0,
-          })
         }
 
         // Initialize progress entries if missing
@@ -130,23 +120,18 @@ export async function getSession(): Promise<SessionData | null> {
     }
 
     // Get recovered fragments
-    const recoveredRows = await db.select().from(fragments).where(eq(fragments.userId, sessionId))
+    const recoveredRows = await db.select({ timelineId: fragments.timelineId }).from(fragments).where(eq(fragments.userId, sessionId))
     const recovered = recoveredRows.map((r: any) => r.timelineId)
 
     // Get wrong attempts to calculate integrity
-    const events = await db.select().from(puzzleEvents).where(eq(puzzleEvents.userId, sessionId))
+    const events = await db.select({ timelineId: puzzleEvents.timelineId }).from(puzzleEvents).where(and(eq(puzzleEvents.userId, sessionId), eq(puzzleEvents.outcome, 'wrong')))
     
     const wrongAttempts: Record<string, number> = {}
     events.forEach((e: any) => {
-      if (e.outcome === 'wrong') {
-        wrongAttempts[e.timelineId] = (wrongAttempts[e.timelineId] || 0) + 1
-      }
+      wrongAttempts[e.timelineId] = (wrongAttempts[e.timelineId] || 0) + 1
     })
 
-    // Get leaderboard entry for hints
-    const lbEntryRows = await db.select().from(leaderboard).where(eq(leaderboard.userId, sessionId))
-    const lbEntry = lbEntryRows[0]
-    const hints = lbEntry?.hintCount ?? 0
+    const hints = 0
 
     // Integrity score: starts at 100, drops by 10 per wrong answer (min 0)
     let totalWrong = 0
@@ -201,7 +186,7 @@ export async function setSession(name: string, email: string, teamName?: string,
   // Live Database Mode
   try {
     // Check if user exists by email
-    const userRows = await db.select().from(users).where(eq(users.email, email))
+    const userRows = await db.select().from(users).where(eq(users.email, email)).limit(1)
     let user = userRows[0]
     
     if (!user) {
@@ -225,17 +210,6 @@ export async function setSession(name: string, email: string, teamName?: string,
       if (password) updates.password = password
       await db.update(users).set(updates).where(eq(users.id, user.id))
       user = { ...user, ...updates }
-    }
-
-    // Initialize leaderboard entry if missing
-    const lbRows = await db.select().from(leaderboard).where(eq(leaderboard.userId, user.id))
-    const lb = lbRows[0]
-    if (!lb) {
-      await db.insert(leaderboard).values({
-        userId: user.id,
-        fragmentCount: 0,
-        hintCount: 0,
-      })
     }
 
     // Initialize timeline progress for all 9 timelines
