@@ -23,7 +23,7 @@ export function AudioPlayer({ onPlayStateChange, onAudioEnded }: AudioPlayerProp
   const initSound = useCallback(() => {
     if (sound) return sound;
 
-    const audioUrl = "/audio/VOXScrm_Wilhelm%20scream%20(ID%200477)_BigSoundBank.com.mp3";
+    const audioUrl = "/audio/wilhelm.mp3";
     
     const newSound = new Howl({
       src: [audioUrl],

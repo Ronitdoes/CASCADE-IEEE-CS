@@ -13,7 +13,6 @@ interface CaseFileLayoutProps {
 export function CaseFileLayout({ children }: CaseFileLayoutProps) {
   const activePuzzle = useCaseStore((state) => state.activePuzzle);
   const setActive = useCaseStore((state) => state.setActive);
-  const reset = useCaseStore((state) => state.reset);
   const { isMuted, toggleMute } = useAudio();
 
   return (
@@ -39,18 +38,7 @@ export function CaseFileLayout({ children }: CaseFileLayoutProps) {
         <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
           <ProgressBar />
 
-          {/* Reset Button */}
-          <button
-            onClick={() => {
-              if (window.confirm("Are you sure you want to reset all timeline progress?")) {
-                reset();
-              }
-            }}
-            className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-red-500/40 hover:text-red-400 rounded-md text-xs font-mono text-zinc-400 cursor-pointer transition-all duration-300 shadow-md min-h-[38px] flex items-center justify-center"
-            aria-label="Reset case progress"
-          >
-            Reset
-          </button>
+
 
           {/* Local Mute Toggle */}
           <button
