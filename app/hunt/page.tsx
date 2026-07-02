@@ -99,31 +99,7 @@ const CASE_COLORS = [
   },
 ];
 
-function getPermutedIndices(userId: string | null): number[] {
-  const base = [0, 1, 2, 3, 4, 5, 6, 7];
-  if (!userId) return base;
 
-  let seed = 0;
-  for (let i = 0; i < userId.length; i++) {
-    seed = (seed << 5) - seed + userId.charCodeAt(i);
-    seed |= 0;
-  }
-
-  const random = () => {
-    const x = Math.sin(seed++) * 10000;
-    return x - Math.floor(x);
-  };
-
-  const shuffled = [...base];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(random() * (i + 1));
-    const temp = shuffled[i];
-    shuffled[i] = shuffled[j];
-    shuffled[j] = temp;
-  }
-
-  return shuffled;
-}
 
 export default function HuntPage() {
   const [completedList, setCompletedList] = useState<Record<string, boolean>>({});
@@ -456,8 +432,7 @@ export default function HuntPage() {
 
       <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl w-full">
         {(() => {
-          const permutedIndices = getPermutedIndices(userId);
-          const displayIndices = [...permutedIndices, 8];
+          const displayIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
           return displayIndices.map((origIndex) => {
             const num = String(origIndex + 1).padStart(2, "0");
