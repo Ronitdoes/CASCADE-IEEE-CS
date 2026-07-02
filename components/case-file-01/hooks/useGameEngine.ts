@@ -13,6 +13,7 @@ export interface Puzzle {
   answer?: string;
   sequenceLength?: number;
   targetWeight?: number;
+  puzzleKey?: string;
 }
 
 export interface Anomaly {
@@ -125,7 +126,7 @@ const LEVELS: Level[] = [
         puzzles: [
           { type: "lights_out", pattern: [1, 4, 7] },
           { type: "sequence", sequenceLength: 3 },
-          { type: "weight_balance", targetWeight: 16 }
+          { type: "question", question: "Mummy Seal Restoration\n\nRepair broken burial seals like a jigsaw before the curse awakens.", puzzleKey: "a7_2" }
         ],
         solved: false
       },
