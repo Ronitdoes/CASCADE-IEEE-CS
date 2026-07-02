@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isDbAvailable, db } from '@/db'
 import { emailTransmissions } from '@/db/schema'
-import { setSession } from '@/app/hunt/case-07/lib/session'
+import { setSession, getSession } from '@/app/hunt/case-07/lib/session'
 import { queueMailDeliveryJob } from '@/app/hunt/case-07/lib/brevo'
 import { mockTransmissions, MockTransmission } from '@/app/hunt/case-07/lib/mockDb'
 import { DeadlightTransmissionEmail } from '@/app/hunt/case-07/emails/case-07'
@@ -92,8 +92,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Set user session in cookies (log them in)
-    const userId = await setSession(name, email)
+    // Preserve existing teamName and password if active session exists
+    const currentSession = await getSession()
+    const teamName = currentSession?.teamName
+    const password = currentSession?.password
+
+    // Set user session in cookies (log them in / sync session)
+    const userId = await setSession(name, email, teamName, password)
 
     // Generate unique recovery key using CSPRNG
     let recoveryKey = ''

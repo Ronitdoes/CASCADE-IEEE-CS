@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from '../operation-deadlight.module.css'
 
 interface TransmissionRegistrationProps {
@@ -12,7 +12,27 @@ export function TransmissionRegistration({ onSuccess }: TransmissionRegistration
   const [email, setEmail] = useState('')
   const [sector, setSector] = useState('A-BLOCK')
   const [loading, setLoading] = useState(false)
+  const [isPreFilled, setIsPreFilled] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function syncSession() {
+      try {
+        const res = await fetch('/hunt/case-07/api/auth/session')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.authenticated && data.user) {
+            if (data.user.name) setName(data.user.name)
+            if (data.user.email) setEmail(data.user.email)
+            setIsPreFilled(true)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync agent session:', err)
+      }
+    }
+    syncSession()
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -53,6 +73,24 @@ export function TransmissionRegistration({ onSuccess }: TransmissionRegistration
         <p>SITE KENNEDY — CLASSIFIED TRANSMISSION REGISTRATION</p>
         <p>GOVERNMENT CLEARANCE LEVEL II REQUIRED</p>
       </div>
+
+      {isPreFilled && (
+        <div style={{
+          background: 'rgba(74, 255, 74, 0.08)',
+          border: '1px solid #1a4a1a',
+          color: '#4aff4a',
+          padding: '0.6rem 1rem',
+          margin: '0.8rem 1.2rem 0 1.2rem',
+          fontSize: '0.75rem',
+          fontFamily: 'var(--font-mono, monospace)',
+          letterSpacing: '0.05em',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+        }}>
+          <span>✓ ACTIVE LANDING AUTH SESSION SYNCHRONIZED</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className={styles.registrationForm}>
         <div className={styles.formField}>
@@ -118,4 +156,5 @@ export function TransmissionRegistration({ onSuccess }: TransmissionRegistration
     </div>
   )
 }
+
 

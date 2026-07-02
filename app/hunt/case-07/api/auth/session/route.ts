@@ -1,5 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { setSession, clearSession } from '@/app/hunt/case-07/lib/session'
+import { setSession, clearSession, getSession } from '@/app/hunt/case-07/lib/session'
+
+export async function GET() {
+  try {
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json({ authenticated: false }, { status: 401 })
+    }
+    return NextResponse.json({
+      authenticated: true,
+      user: {
+        userId: session.userId,
+        name: session.name,
+        email: session.email,
+        teamName: session.teamName,
+      },
+    })
+  } catch (error) {
+    console.error('Session GET API error:', error)
+    return NextResponse.json({ authenticated: false }, { status: 500 })
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,3 +54,4 @@ export async function DELETE() {
   await clearSession()
   return NextResponse.json({ success: true })
 }
+
