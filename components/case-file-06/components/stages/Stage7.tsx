@@ -75,14 +75,13 @@ export default function Stage7({ onComplete, onLogRecovered, setFilePrinted }: {
             style={{ 
               flex: 1, 
               color: error ? "var(--text-alert)" : "var(--text-primary)",
-              borderBottomColor: error ? "var(--text-alert)" : "var(--text-primary)",
+              borderBottom: `1px solid ${error ? "var(--text-alert)" : "var(--text-primary)"}`,
               textAlign: "center",
               fontSize: "1.5rem",
               background: "transparent",
               borderTop: "none",
               borderLeft: "none",
               borderRight: "none",
-              borderBottom: "1px solid",
               outline: "none"
             }}
           />
